@@ -65,57 +65,80 @@
 
 ## 5. Protecting the reservation system
 
-Storm callers are **correlated**: a thousand people on AT123 want the same alternatives. So the design keeps a copy per flight.
+The PSS (the airline's reservation system) accepts about **50 requests per second**, yet in a storm thousands of callers ask the same things. So the design keeps a copy per flight, asks the PSS once for many callers, and queues the rest by priority.
 
 ![Reservation protection](./diagrams/reservation-protection.svg)
 *Figure 3: Prepare early, keep a copy, ask once, queue by priority.*
 
-1. **Prepare early.** A `flight.cancelled` event triggers a worker that pulls the passenger list once and computes alternatives before most callers dial.
-2. **Keep a copy.** Zingly's own encrypted copy of status, passenger list and options. It is **not a PSS replica**.
-3. **Ask once.** Concurrent requests for the same thing become one PSS query, so 1,000 callers cost one.
-4. **Priority lanes.** Requests that miss the copy queue by importance, so a status lookup never blocks a rebooking.
+**Worked example.** Flight AT123, London to Boston, is cancelled and 180 passengers are affected.
 
-The four lanes are P0 booking or holding a seat (40% of capacity), P1 finding the caller's booking (30%), P2 refreshing options (20%) and P3 flight status (10%). When P0 is full the caller gets a **deferred commit**: the choice is recorded, booked shortly after and confirmed by SMS (needs business sign-off). Other full lanes fall back to a labelled snapshot or the saved copy.
+1. **Prepare early.** At 09:00 Atlantica's disruption feed reports the cancellation. A worker pulls the passenger list (1 PSS request), finds alternatives for London–Boston economy and business (a few requests), and stores them in Zingly's own encrypted **saved copy**. This runs once, at low priority, before most callers dial. It is not a PSS replica.
+2. **Answer from the saved copy.** At 09:10 hundreds of callers ask "Is my flight cancelled? What are my options?". Each is answered in under 50 ms with **0 PSS requests**.
+3. **Ask once.** Options stay fresh for only 20–30 s, because seats sell out. If an entry expires and 50 callers ask in the same second, the first request goes to the PSS and the other 49 wait for the same answer: **1 request instead of 50**, and the saved copy is refilled.
+4. **Priority lanes.** Requests that cannot be shared (each caller's own booking lookup and each rebooking) pass through four lanes that split the 50 per second. If a lane stays full, the PSS is not called and the caller hears a fallback.
 
-**Safe to keep:** flight status (30 s), passenger list (until the flight closes), options (20–30 s, offer only), a booking (for the call only). **Never kept:** holds and commits. A booking always re-checks the PSS live.
+**When a lane is full, what the caller hears**
 
-**At 20x.** Genesys makes a **capacity check** on Zingly before routing each call, which reads active sessions, vendor headroom and reservation-system health. A predictive autoscaler adds voice workers when a disruption event arrives, before the calls do. Speech and LLM vendors have reserved capacity and a secondary. Above capacity the call overflows to the human queue with a callback offer, so no caller gets a busy tone.
+| Lane | Share of 50/s | Waits up to | If still full, the caller hears |
+|---|---|---|---|
+| **P0** Book or hold a seat | 40% | 3 s | "I've noted your choice of the 14:05 to Boston. We're confirming it now, and you'll get a text within 30 minutes." (**deferred commit**, needs business sign-off) |
+| **P1** Find the caller's booking | 30% | 1.5 s | "I can see AT123 to Boston was cancelled. This is as of 14:02, and I'll check again before I change anything." |
+| **P2** Refresh options | 20% | 0.5 s | "The next flights I can see are 14:05 and 19:40. Availability changes quickly, so I'll check before I book." |
+| **P3** Flight status | 10% | 0 s | "AT123 to Boston is cancelled, as of 14:02." |
+
+**Under the hood**
+- **Lanes:** each lane is a token bucket that refills at its share. A parent limit, set a little below 50, caps the total, and the counters live in Redis so every Zingly instance shares them. Idle lanes lend spare capacity to busier, higher lanes.
+- **Ask once:** the Redis command `SET key NX` (set only if the key does not exist) is atomic, so only **one** of the 50 requests wins. That request calls the PSS, writes the fresh answer to the saved copy and releases the key. The other 49 wait a moment and read that answer. The key has a short expiry, so a failed first request never blocks anyone.
+
+**Why it works.** Take 6 new calls per second in a storm (illustrative). This is what one call costs the PSS:
+
+| The caller needs | Without protection | With protection |
+|---|---|---|
+| Flight status | 1 | 0 (saved copy) |
+| Find their booking | 1 | 1 |
+| Alternatives (asked twice) | 2 | 0 (saved copy) |
+| Re-check, hold and confirm (only the 4 in 10 who rebook) | 3 | 1.2 (3 × 0.4) |
+| **PSS requests per call** | **7** | **2.2** |
+| **At 6 calls per second** | **42 per second**, close to the 50 limit before any retries | **13 per second**, about 4x headroom |
+
+**Never kept:** holds and commits. A booking always re-checks the PSS live.
+
+**At 20x.** Genesys makes a **capacity check** on Zingly before routing each call, which reads active sessions, vendor headroom and reservation-system health. A predictive autoscaler adds voice workers when a disruption event arrives, before the calls do, and speech and LLM vendors have reserved capacity. Above capacity the call overflows to the human queue with a callback offer, so no caller gets a busy tone.
 
 ## 6. Handover, screen-pop and callback
 
+The bot returns `AGENT_HANDOVER` with **category, subcategory and summary**, **who the caller is and how they were verified**, the booking and disruption, and **every attempted action with its result** (for example "rebook to AT127 failed: reservation timeout, booking unchanged"). The Genesys flow reads these attributes, and sensitive detail is fetched by a Data Action under OAuth. On a **short wait** the call goes to a skill queue and the agent's screen-pop shows who, why and what was tried. On a **long wait or when all agents are busy** the flow offers a **callback** that keeps the caller's place, with the same attributes and screen-pop.
+
 ![Handover and callback](./diagrams/handover-callback.svg)
 *Figure 4: Genesys owns the queue, the wait time and the callback.*
-
-The bot returns `AGENT_HANDOVER` with **category, subcategory and summary**, **who the caller is and how they were verified**, the booking and disruption, and **every attempted action with its result** (for example "rebook to AT127 failed: reservation timeout, booking unchanged"). The Genesys flow reads these attributes, and sensitive detail is fetched by a Data Action under OAuth. On a **short wait** the call goes to a skill queue and the agent's screen-pop shows who, why and what was tried. On a **long wait or when all agents are busy** the flow offers a **callback** that keeps the caller's place, confirmed by SMS, with the same attributes and the same screen-pop.
 
 ## 7. Degraded modes
 
 | Failure | What the system does | What the caller hears |
 |---|---|---|
-| **LLM latency spike** (p95 first token > 800 ms) | AI gateway hedges to a secondary model at 600 ms, then **deterministic mode**: templates, LLM only extracts answers | Same task, more scripted. Filler audio, no dead air. |
+| **LLM latency spike** (first token > 800 ms) | Hedge to a secondary model at 600 ms, then **deterministic mode**: templates, LLM only extracts answers | Same task, more scripted. No dead air. |
 | **LLM outage** | Deterministic mode with grammar-based slots | "Say or key in option 1 or 2." |
 | **Speech-to-text outage** | Secondary STT within 2 s, then keypad (DTMF) mode | "Please use your keypad." |
 | **Text-to-speech outage** | Secondary TTS, then cached phrases | A different voice, same flow |
-| **Reservation system brownout** | Lanes tighten, answers from the saved copy labelled "as of", commits become deferred commits | "I've recorded your choice of the 14:05. You'll get a text within 30 minutes." |
-| **Reservation system down** | Information-only mode, changes paused, handover with exact state | Accurate status and a callback offer. No false promises. |
-| **Zingly unavailable or full** | Genesys flow error path sends the call to the human queue or a callback | A brief pause, then a person. **Never a dropped call.** |
+| **Reservation system brownout** | Lanes tighten, saved copy labelled "as of", commits become deferred commits | "I've recorded your choice of the 14:05. You'll get a text within 30 minutes." |
+| **Reservation system down** | Information only, changes paused, handover with exact state | Accurate status and a callback offer |
+| **Zingly unavailable or full** | Genesys error path sends the call to the human queue or a callback | A brief pause, then a person. **Never a dropped call.** |
 
 ## 8. Integration and security
 
 | Interface | Auth | Semantics |
 |---|---|---|
-| Genesys → Zingly gateway (create conversation, capacity check) | OAuth 2.0 client credentials, 5-minute audience-restricted tokens, WAF | Idempotent on call ID |
+| Genesys → Zingly gateway (create conversation, capacity check) | OAuth 2.0 client credentials, 5-minute tokens, WAF | Idempotent on call ID |
 | Genesys ↔ LiveKit room | SIP over TLS with SRTP, IP allow-list | Caller and agent join one room |
 | Zingly → Atlantica (via MCP) | mTLS, per-tenant vault credentials | Budgeted reads, idempotent writes |
-| Atlantica → Zingly (events); Zingly → Genesys (callback, wait time) | Signed webhook or stream; OAuth client credentials | At-least-once, ordered per flight; honour `Retry-After` on 429 |
+| Atlantica → Zingly (events); Zingly → Genesys (callback) | Signed webhook; OAuth client credentials | At-least-once; honour `Retry-After` on 429 |
 | Extra check (Strongly verified) | Atlantica app login (**OIDC**) approves a push. Atlantica returns a signed token, expiry ≤ 120 s. | Verified against Atlantica's keys |
 
-**Retries and idempotency:** the rebooking key is `hash(tenant, booking, from-flight, to-flight)` and excludes the call ID, so a dropped call that dials back cannot rebook twice. A timed-out write is never blindly retried: read the booking first, then retry under the same key. A failed commit after a hold releases the hold.
+**Retries and idempotency:** the rebooking key is `hash(tenant, booking, from-flight, to-flight)` and excludes the call ID, so a dropped call that dials back cannot rebook twice. A timed-out write is never blindly retried: read the booking first, then retry under the same key. A failed commit releases the hold.
 
 **Data protection**
 - **Residency:** the whole platform, including the OpenAI and Anthropic deployments, runs in the EU. As Zingly is a US vendor, a DPA with Standard Contractual Clauses and a transfer-impact assessment are still needed.
-- **PII** is tokenised before the model and restored at speech time. No payment or health data reaches it. No retention, no training.
-- **Storage:** encrypted in transit and at rest with per-tenant keys. Redacted transcripts kept 30 days, handoff context 24 hours, no audio stored.
+- **PII** is tokenised before the model and restored at speech time. No payment or health data reaches it, with no retention and no training. Data is encrypted in transit and at rest with per-tenant keys. Redacted transcripts are kept 30 days, handoff context 24 hours, and no audio is stored.
 - **Model safety:** flight times and entitlements come from tools and approved wording, never the model. Tools are allow-listed per identity level and every call is logged.
 
 **Compliance.** **GDPR/UK GDPR** is the primary frame (contract performance, data minimisation, DPIA before go-live).
