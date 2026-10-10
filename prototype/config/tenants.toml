@@ -1,0 +1,135 @@
+# One deployment, many tenants.
+#
+#   [defaults.<module>]           applies to every tenant
+#   [tenants.<id>]                tenant identity: dialed numbers route calls to it
+#   [tenants.<id>.<module>]       overrides for that tenant only (deep-merged over defaults)
+#
+# Modules (one section each): gateway, channel, ai_router, agents, auth, policy,
+# saved_copy, mcp, handover. Each module receives only its own merged section.
+
+# ---------------------------------------------------------------- defaults
+[defaults.gateway]
+max_concurrent_sessions = 500
+webhook_secret_env = ""                 # name of env var holding the disruption-webhook secret
+
+[defaults.channel]
+max_input_chars = 500
+dtmf_enabled = true
+
+[defaults.ai_router.welcome]
+consent_required = true
+consent_prompt = "I'm an AI assistant and this call may be recorded. Is that OK?"
+after_consent = "Thanks. How can I help with your flight today?"
+consent_declined = "No problem. I'll connect you to a colleague."
+audio_version = "v1"
+
+[defaults.ai_router.fast_path]
+greeting_reply = "How can I help with your flight today?"
+
+[defaults.ai_router.disambiguation]
+min_confidence = 0.6
+switch_confidence = 0.75
+max_clarify = 2
+
+[defaults.ai_router.intents]
+rebooking = ["cancelled", "canceled", "cancel", "rebook", "re-book", "change my flight", "new flight",
+             "another flight", "alternative", "alternatives", "options", "missed", "disrupted", "move me"]
+flight_status = ["status", "delayed", "delay", "on time", "departure time", "what time", "is my flight"]
+faq = ["baggage", "bag", "bags", "luggage", "hotel", "voucher", "compensation", "refund policy", "meal"]
+
+[defaults.ai_router.routing]
+enabled_agents = ["rebooking", "flight_status", "faq"]
+rollout_percent = { rebooking = 100, flight_status = 100, faq = 100 }
+
+[defaults.agents]
+max_options = 2
+
+[defaults.auth]
+max_attempts = 3
+lockout_minutes = 60
+use_caller_id_hint = true
+
+[defaults.policy]
+# Allow-list: a tool runs only at or above this identity level (design §4, §8).
+tool_min_level = { get_flight_status = "unknown", find_bookings_by_phone = "unknown", get_booking = "unknown", get_alternatives = "verified", rebook = "verified" }
+
+[defaults.policy.lanes]
+# The PSS hard limit is 5 req/s. The parent sits a little below it (design §5).
+parent_rps = 4.0
+parent_burst = 1.0
+borrow = true
+shares = { P0 = 0.40, P1 = 0.30, P2 = 0.20, P3 = 0.10 }
+wait_s = { P0 = 3.0, P1 = 1.5, P2 = 0.5, P3 = 0.0 }
+
+[defaults.policy.breaker]
+failure_threshold = 5
+open_seconds = 10
+
+[defaults.saved_copy]
+default_ttl_s = 25
+keep_stale_s = 3600
+
+[defaults.mcp]
+pss_base_url = "http://127.0.0.1:9001"
+timeout_s = 2.0
+status_ttl_s = 60
+alternatives_ttl_s = 25
+booking_ttl_s = 600
+deferred_commit = true
+prewarm_wait_s = 10
+protection_enabled = true
+
+[defaults.handover]
+default_queue = "General_Support"
+callback_eligible = true
+context_ttl_hours = 24
+queues = { rebooking = "Disruption_Rebooking", flight_status = "Flight_Info", faq = "General_Support", general = "General_Support" }
+priority = { rebooking = 10 }
+
+# ---------------------------------------------------------------- tenants
+[tenants.atlantica]
+display_name = "Atlantica Airways"
+dialed_numbers = ["+448000001234"]
+
+[tenants.atlantica.ai_router.welcome]
+text = "Welcome to Atlantica Airways."
+
+[tenants.atlantica.agents]
+airports = { LHR = "London Heathrow", BOS = "Boston", JFK = "New York JFK" }
+faq = [
+  { keywords = ["bag", "bags", "baggage", "luggage"], answer = "If we've rebooked you, your checked bags are moved to the new flight automatically." },
+  { keywords = ["hotel", "voucher", "meal"], answer = "If your new flight is tomorrow, you're entitled to a hotel and meal vouchers. We'll text you the details." },
+]
+
+[tenants.atlantica.mcp]
+airline_code = "atlantica"
+
+# A second airline on the same deployment: different welcome, no consent prompt,
+# a stricter lane split, and the rebooking agent canaried to 50% of calls.
+[tenants.nordica]
+display_name = "Nordica Air"
+dialed_numbers = ["+4780001234"]
+
+[tenants.nordica.ai_router.welcome]
+text = "Welcome to Nordica Air."
+consent_required = false
+
+[tenants.nordica.ai_router.routing]
+rollout_percent = { rebooking = 50 }
+
+[tenants.nordica.agents]
+airports = { OSL = "Oslo", CPH = "Copenhagen" }
+faq = [{ keywords = ["bag", "baggage", "luggage"], answer = "Your bags follow you to the new flight." }]
+
+[tenants.nordica.auth]
+max_attempts = 2
+
+[tenants.nordica.policy.lanes]
+shares = { P0 = 0.50, P1 = 0.30, P2 = 0.10, P3 = 0.10 }
+
+[tenants.nordica.mcp]
+airline_code = "nordica"
+deferred_commit = false
+
+[tenants.nordica.handover]
+queues = { rebooking = "NR_Disruption", general = "NR_General" }

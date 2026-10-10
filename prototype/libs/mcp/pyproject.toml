@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "zingly-mcp"
+version = "0.1.0"
+description = "MCP-shaped tool registry and Atlantica PSS adapter"
+requires-python = ">=3.11"
+dependencies = ["zingly-core", "httpx>=0.27"]
+
+[tool.setuptools.packages.find]
+where = ["src"]

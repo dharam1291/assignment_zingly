@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "zingly-voice-agent"
+version = "0.1.0"
+description = "Voice Agent service: composes the Zingly libraries behind the Genesys-facing gateway"
+requires-python = ">=3.11"
+dependencies = [
+  "zingly-core", "zingly-channel", "zingly-ai-router", "zingly-agents", "zingly-auth",
+  "zingly-policy", "zingly-saved-copy", "zingly-mcp", "zingly-handover",
+  "fastapi>=0.110", "uvicorn>=0.29", "httpx>=0.27",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -16,7 +16,7 @@ Twilio stays the carrier, Genesys stays the contact centre, and the reservation 
 | # | Deliverable | Where |
 |---|---|---|
 | 1 | **Solution design** (5 pages) | [Web page](https://dharam1291.github.io/assignment_zingly/) · [Markdown](docs/SOLUTION_DESIGN.md) |
-| 2 | **Prototype** | `prototype/`, coming next |
+| 2 | **Prototype**: a simulated disruption call end to end, a 5 req/s mock reservation system, the handover payload and a spike test | [`prototype/`](prototype/README.md) · `cd prototype && make install test run demo spike` |
 
 ## View it
 
