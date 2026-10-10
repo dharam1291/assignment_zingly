@@ -15,12 +15,14 @@ Twilio stays the carrier, Genesys stays the contact centre, and the reservation 
 
 | # | Deliverable | Where |
 |---|---|---|
-| 1 | **Solution design** (5 pages) | [Web page](docs/index.html) · [Markdown](docs/SOLUTION_DESIGN.md) |
+| 1 | **Solution design** (5 pages) | [Web page](https://dharam1291.github.io/assignment_zingly/) · [Markdown](docs/SOLUTION_DESIGN.md) |
 | 2 | **Prototype** | `prototype/`, coming next |
 
 ## View it
 
-Open [`docs/index.html`](docs/index.html) in a browser. It is one self-contained file. To publish it, enable GitHub Pages on `main` / `/docs`.
+**Online:** https://dharam1291.github.io/assignment_zingly/ (needs GitHub Pages on: Settings → Pages → Deploy from a branch → `main` / `/docs`).
+
+**Locally:** download the repo and open `docs/index.html` in a browser. It is one self-contained file. GitHub itself only shows this file as source code.
 
 ## Rebuild
 
