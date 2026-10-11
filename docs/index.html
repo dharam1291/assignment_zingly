@@ -47,6 +47,13 @@ strong { font-weight: 650; }
 .topbar .spacer { flex: 1; }
 .topbar .meta { color: var(--sub); font-size: 13px; white-space: nowrap; }
 .theme-btn { border: 1px solid var(--line-2); background: var(--paper); color: var(--ink-2); border-radius: 8px; height: 32px; padding: 0 10px; cursor: pointer; font: inherit; font-size: 13px; }
+.page-btn { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 14px; border-radius: 9px; background: var(--accent); color: #fff; font-size: 13.5px; font-weight: 650; text-decoration: none; white-space: nowrap; box-shadow: 0 1px 2px rgba(15,23,42,.12), 0 4px 12px color-mix(in srgb, var(--accent) 30%, transparent); transition: transform .12s ease, box-shadow .12s ease, filter .12s ease; }
+.page-btn:hover { filter: brightness(1.08); transform: translateY(-1px); box-shadow: 0 2px 4px rgba(15,23,42,.14), 0 8px 18px color-mix(in srgb, var(--accent) 38%, transparent); }
+.page-btn:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 45%, transparent); outline-offset: 2px; }
+.page-btn .ic { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 6px; background: rgba(255,255,255,.18); font-size: 12px; }
+:root[data-theme="dark"] .page-btn { color: #0B1B33; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .page-btn { color: #0B1B33; } }
+@media (max-width: 560px) { .topbar .long, .page-btn .ic { display: none; } .page-btn { padding: 0 12px; gap: 6px; } .topbar-in { gap: 10px; } }
 .progress { position: absolute; left: 0; bottom: -1px; height: 2px; background: var(--accent); width: 0; }
 
 /* ---------- hero ---------- */
@@ -276,7 +283,7 @@ footer { max-width: 1320px; margin: 0 auto; padding: 0 24px 48px; color: var(--s
   .brand small { display: none; }
 }
 @media print {
-  .topbar, nav.toc, .theme-btn, figcaption a { display: none !important; }
+  .topbar, nav.toc, .theme-btn, .page-btn, figcaption a { display: none !important; }
   body { background: #fff; font-size: 11px; }
   .hero { background: #0B1B33 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .layout { display: block; padding: 0; }
@@ -298,8 +305,9 @@ ol.steps li::before{counter-increment:s;content:counter(s);width:26px;height:26p
   <div class="topbar-in">
     <a class="brand" href="#top"><span class="brand-mark">Z</span> Zingly Voice <small>· Atlantica Airways</small></a>
     <span class="spacer"></span>
-    <span class="meta">Solution design · v1.0 · Oct 2026 · <a href="prototype.html">Prototype →</a></span>
-    <button class="theme-btn" id="themeBtn" type="button" aria-label="Toggle colour theme">◐ Theme</button>
+    <span class="meta">Solution design · v1.0 · Oct 2026</span>
+    <a class="page-btn" href="prototype.html"><span class="ic">▶</span><span><span class="long">View the </span>Prototype</span><span aria-hidden="true">→</span></a>
+    <button class="theme-btn" id="themeBtn" type="button" aria-label="Toggle colour theme">◐<span class="long"> Theme</span></button>
   </div>
   <div class="progress" id="progress"></div>
 </header>
