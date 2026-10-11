@@ -117,35 +117,37 @@ for pid in filter(str.isdigit, os.listdir("/proc")):
         pass
 PY
     fi
-  } | grep -E '^[0-9]+$' | sort -u
+  } | grep -E '^[0-9]+$' | sort -u || true   # no listener is not an error (set -e + pipefail)
 }
 
 alive() { kill -0 "$1" 2>/dev/null; }
 
-stop_pids() {   # graceful: SIGTERM, wait, then SIGKILL
-  local label="$1"; shift
-  local pids=("$@") left=()
-  [[ ${#pids[@]} -eq 0 ]] && return 0
-  info "Stopping $label (pid ${pids[*]}): SIGTERM"
-  kill -TERM "${pids[@]}" 2>/dev/null || true
+# PIDs are plain numbers, so they travel as space-separated strings: no arrays, no mapfile.
+# That keeps the script working on bash 3.2 (the macOS default) as well as bash 4/5.
+stop_pids() {   # graceful: SIGTERM, wait, then SIGKILL.  $1 = label, $2 = "pid pid ..."
+  local label="$1" pids left="" p i
+  pids="$(echo $2)"   # trim and collapse spaces
+  [[ -z "$pids" ]] && return 0
+  info "Stopping $label (pid $pids): SIGTERM"
+  kill -TERM $pids 2>/dev/null || true
   for ((i = 0; i < GRACE_SECONDS * 4; i++)); do
-    left=(); for p in "${pids[@]}"; do alive "$p" && left+=("$p"); done
-    [[ ${#left[@]} -eq 0 ]] && return 0
+    left=""; for p in $pids; do alive "$p" && left="$left $p"; done
+    [[ -z "$left" ]] && return 0
     sleep 0.25
   done
-  warn "$label did not exit within ${GRACE_SECONDS}s: SIGKILL ${left[*]}"
-  kill -KILL "${left[@]}" 2>/dev/null || true
+  warn "$label did not exit within ${GRACE_SECONDS}s: SIGKILL$left"
+  kill -KILL $left 2>/dev/null || true
 }
 
 free_port() {
-  local name="$1" port="$2" pids=()
-  mapfile -t pids < <(pids_on_port "$port")
-  if [[ ${#pids[@]} -gt 0 ]]; then
+  local name="$1" port="$2" pids
+  pids="$(pids_on_port "$port" | tr '\n' ' ')"
+  if [[ -n "${pids// /}" ]]; then
     warn "Port $port ($name) is in use"
-    stop_pids "port $port" "${pids[@]}"
+    stop_pids "port $port" "$pids"
   fi
-  mapfile -t pids < <(pids_on_port "$port")
-  [[ ${#pids[@]} -eq 0 ]] || die "Port $port is still in use by pid ${pids[*]}"
+  pids="$(pids_on_port "$port" | tr '\n' ' ')"
+  [[ -z "${pids// /}" ]] || die "Port $port is still in use by pid $pids"
 }
 
 wait_healthy() {
@@ -178,13 +180,14 @@ stop_all() {   # $1 = "own" to stop only processes this script started (pid file
   local scope="${1:-all}" idx
   for ((idx = ${#SERVICES[@]} - 1; idx >= 0; idx--)); do   # reverse order: northbound first
     IFS='|' read -r name port _ _ <<<"${SERVICES[$idx]}"
-    local pids=()
+    local pids="" p
     if [[ -f "$RUN/$name.pid" ]]; then
-      local p; p="$(cat "$RUN/$name.pid")"; alive "$p" && pids+=("$p")
+      p="$(cat "$RUN/$name.pid")"; alive "$p" && pids="$p"
       rm -f "$RUN/$name.pid"
     fi
-    [[ "$scope" == "own" ]] || mapfile -t -O "${#pids[@]}" pids < <(pids_on_port "$port")
-    [[ ${#pids[@]} -gt 0 ]] && stop_pids "$name" $(printf '%s\n' "${pids[@]}" | sort -u)
+    [[ "$scope" == "own" ]] || pids="$pids $(pids_on_port "$port" | tr '\n' ' ')"
+    pids="$(printf '%s\n' $pids | sort -u | tr '\n' ' ')"
+    [[ -n "${pids// /}" ]] && stop_pids "$name" "$pids"
   done
   [[ "$scope" == "own" ]] || info "All services stopped"
 }
