@@ -1,0 +1,31 @@
+title: Disrupted caller rebooks end to end
+summary: >
+  A passenger on the cancelled AT123 calls. Caller ID gives a masked hint (LIKELY), booking
+  reference + surname make them VERIFIED, a baggage question is answered mid-task and the
+  rebooking resumes, the new flight is committed in lane P0 and confirmed.
+demonstrates: [verify on demand, identity levels, saved copy, side question + resume, P0 commit, signed identity token]
+setup:
+  - reset: true
+  - prewarm: {tenant: atlantica, flight: AT123}
+calls:
+  - dialed: "+448000001234"
+    caller: "+447700900001"
+    steps:
+      - say: "yes"
+        expect: {path: fast_path, contains: "How can I help"}
+      - say: "Hi, my flight was cancelled"
+        expect: {agent: rebooking, identity: likely, contains: "ending 23"}
+      - say: "A B C 1 2 3"
+        expect: {contains: surname}
+      - say: "it's Smith"
+        expect: {identity: verified, contains: ["14:05", "19:40"]}
+      - say: "where is my bag?"
+        expect: {agent: faq, contains: "back to your rebooking"}
+      - say: "the first one"
+        expect: {contains: "Shall I go ahead"}
+      - say: "yes"
+        expect: {contains: "booked on AT127"}
+      - say: "no thanks"
+        expect: {status: COMPLETED}
+checks:
+  - pss_booking: {airline: atlantica, ref: ABC123, flight: AT127}

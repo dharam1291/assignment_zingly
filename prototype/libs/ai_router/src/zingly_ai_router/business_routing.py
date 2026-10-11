@@ -1,6 +1,6 @@
 """Business routing owned by Zingly, per tenant: which domain agents are on and what share
 of calls each one takes (canary rollout). The IVR-vs-bot split is NOT here: Genesys owns
-that in its inbound flow (design §2)."""
+that in its inbound flow (design section 2)."""
 
 from __future__ import annotations
 

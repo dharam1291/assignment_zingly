@@ -1,10 +1,11 @@
 """Reservation tools. Every PSS call goes: breaker -> priority lane -> PSS.
 
-Two read patterns (design §5):
+Two read patterns (design section 5):
 * shared data (flight status, alternatives): saved copy first, single-flight on a miss,
   stale "as of" copy if the lane is full.
-* caller-ID hint: saved copy first too (pre-warmed from the passenger list), so it is free.
-* booking lookup for verification: live first in lane P1, saved copy (pre-warmed
+* caller-ID hint: saved copy first too (pre-warmed from the passenger list), so it is free,
+  and it only ever returns a masked summary.
+* booking check for verification: live first in lane P1, saved copy (pre-warmed
   passenger list) only as the fallback, labelled "as of".
 Writes are never served from the copy: they go live in lane P0, or become a deferred commit.
 """
@@ -12,9 +13,10 @@ Writes are never served from the copy: they go live in lane P0, or become a defe
 from __future__ import annotations
 
 import hashlib
+import time
 from typing import Any, Awaitable, Callable
 
-from zingly_core import TenantContext
+from zingly_core import TenantContext, tracing
 
 from zingly_mcp.backend import BackendError, BackendUnavailable, Conflict, NotFound, PssBackend
 from zingly_mcp.config import McpConfig
@@ -31,8 +33,12 @@ class CircuitOpen(Exception):
     pass
 
 
+def mask_ref(ref: str) -> str:
+    return ref[0] + "*" * (len(ref) - 3) + ref[-2:] if len(ref) > 3 else "***"
+
+
 def idempotency_key(tenant_id: str, booking_ref: str, from_flight: str, to_flight: str) -> str:
-    """Excludes the call id, so a caller who drops and dials back cannot rebook twice (design §8)."""
+    """Excludes the call id, so a caller who drops and dials back cannot rebook twice (design section 8)."""
     raw = "|".join([tenant_id, booking_ref.upper(), from_flight.upper(), to_flight.upper()])
     return hashlib.sha256(raw.encode()).hexdigest()[:24]
 
@@ -46,6 +52,7 @@ class ReservationTools:
         self.cache = cache
         self.breaker = breaker
         self.deferred = deferred
+        self._verify_failures: dict[str, list[float]] = {}  # tenant:ref -> failure times (Redis in production)
 
     # ---- plumbing -------------------------------------------------------------------
     async def _pss(self, lane: str, call: Callable[[], Awaitable[Any]], wait_s: float | None = None) -> Any:
@@ -111,14 +118,40 @@ class ReservationTools:
         return await self._shared(ctx, f"flight:{flight}", "P3",
                                   lambda: self.backend.flight(flight), self.cfg.status_ttl_s)
 
-    async def find_bookings_by_phone(self, ctx: TenantContext, args: dict) -> ToolResult:
-        # The caller-ID hint should be free: disrupted passengers are in the pre-warmed copy.
+    async def lookup_caller_id(self, ctx: TenantContext, args: dict) -> ToolResult:
+        """Caller-ID hint (identity level LIKELY): masked summary only, never booking data."""
         phone = args["phone"]
-        return await self._shared(ctx, f"phone:{phone}", "P1",
-                                  lambda: self.backend.bookings_by_phone(phone), self.cfg.booking_ttl_s)
+        res = await self._shared(ctx, f"phone:{phone}", "P1",
+                                 lambda: self.backend.bookings_by_phone(phone), self.cfg.booking_ttl_s)
+        if res.usable:
+            res.data = [{"flight": b["flight"], "ref_masked": mask_ref(b["ref"])} for b in res.data or []]
+        return res
+
+    async def verify_booking(self, ctx: TenantContext, args: dict) -> ToolResult:
+        """Booking reference + surname check. Returns booking data only on a match, and the
+        same 'no match' whether the reference does not exist or the surname is wrong."""
+        ref = args["booking_ref"].replace(" ", "").upper()
+        # Per-booking throttle, independent of who is asking: the voice agent's lockout is per
+        # caller number, but any MCP client can reach this tool, so guessing is capped here too.
+        key, now = ctx.key("verify", ref), time.time()
+        recent = [t for t in self._verify_failures.get(key, []) if now - t < self.cfg.verify_window_s]
+        self._verify_failures[key] = recent
+        if len(recent) >= self.cfg.verify_max_failures:
+            return ToolResult("denied", source="none", detail="too many failed verifications for this booking")
+        res = await self._live_first(ctx, f"booking:{ref}", "P1", lambda: self.backend.booking(ref))
+        if res.status == "not_found":
+            recent.append(now)
+            return ToolResult("ok", {"match": False}, res.source)
+        if not res.usable:
+            return res
+        match = res.data["surname"].casefold() == str(args.get("surname", "")).strip().casefold()
+        if not match:
+            recent.append(now)
+        res.data = {"match": True, "booking": res.data} if match else {"match": False}
+        return res
 
     async def get_booking(self, ctx: TenantContext, args: dict) -> ToolResult:
-        ref = args["booking_ref"].upper()
+        ref = args["booking_ref"].replace(" ", "").upper()
         return await self._live_first(ctx, f"booking:{ref}", "P1", lambda: self.backend.booking(ref))
 
     async def get_alternatives(self, ctx: TenantContext, args: dict) -> ToolResult:
@@ -139,11 +172,19 @@ class ReservationTools:
                 return ToolResult("deferred", {"idempotency_key": key}, "none", detail=type(exc).__name__)
             return ToolResult("unavailable", source="none", detail=type(exc).__name__)
         except BackendUnavailable:
-            # Never blindly retry a timed-out write: read the booking first (design §8).
+            # Never blindly retry a timed-out write: read the booking back first.
             check = await self.get_booking(ctx, {"booking_ref": ref})
-            if check.status == "ok" and check.data.get("flight") == dst:
-                return ToolResult("ok", {"status": "CONFIRMED", "new_flight": dst, "recovered": True})
-            return ToolResult("unavailable", source="none", detail="rebook timed out; booking unchanged")
+            if check.status == "ok":
+                if check.data.get("flight") == dst:
+                    return ToolResult("ok", {"status": "CONFIRMED", "new_flight": dst, "recovered": True})
+                return ToolResult("unavailable", source="none", detail="rebook timed out; booking read back unchanged")
+            # The write may or may not have landed. Reconcile later under the same idempotency key:
+            # a replay returns the original confirmation if it did, or commits it if it did not.
+            if self.cfg.deferred_commit:
+                self.deferred.add(PendingCommit(ctx.tenant_id, ref, src, dst, key))
+                return ToolResult("unavailable", {"reconciliation": "queued", "idempotency_key": key}, "none",
+                                  detail="rebook outcome unknown; reconciliation queued under the same idempotency key")
+            return ToolResult("unavailable", source="none", detail="rebook outcome unknown")
         except BackendError as exc:
             return ToolResult("unavailable", source="none", detail=type(exc).__name__)
         if self.cfg.protection_enabled:
@@ -157,6 +198,10 @@ class ReservationTools:
         """Disruption event: load status, passenger list and alternatives once, at low priority."""
         if not self.cfg.protection_enabled:
             return {"skipped": "protection disabled"}
+        with tracing.span("mcp.prewarm", "mcp-server", flight=flight):
+            return await self._prewarm(ctx, flight)
+
+    async def _prewarm(self, ctx: TenantContext, flight: str) -> dict:
         wait = self.cfg.prewarm_wait_s
         status = await self._pss("P3", lambda: self.backend.flight(flight), wait)
         self.cache.put(ctx, f"flight:{flight}", status, self.cfg.status_ttl_s)
@@ -174,6 +219,13 @@ class ReservationTools:
                 "alternatives": len(alts), "pss_requests": 3}
 
     async def commit_deferred(self, item: PendingCommit) -> str:
+        with tracing.span("mcp.deferred_commit", "mcp-server", booking=mask_ref(item.booking_ref),
+                          to_flight=item.to_flight, attempt=item.attempts) as sp:
+            outcome = await self._commit_deferred(item)
+            sp.set(outcome=outcome)
+            return outcome
+
+    async def _commit_deferred(self, item: PendingCommit) -> str:
         # Background job: a short wait lets it soak up spare capacity without starving callers.
         if not await self.admission.acquire("P0", 1.0):
             return "retry"
@@ -188,22 +240,32 @@ class ReservationTools:
         return "confirmed"
 
 
-def _schema(**props: str) -> dict:
+def _schema(required: list[str] | None = None, **props: str) -> dict:
     return {"type": "object", "properties": {k: {"type": "string", "description": v} for k, v in props.items()},
-            "required": list(props)}
+            "required": list(props) if required is None else required}
 
 
 def build_registry(tools: ReservationTools, guard: GuardPort) -> ToolRegistry:
     reg = ToolRegistry(guard)
-    reg.register(Tool("get_flight_status", "Status of a flight", _schema(flight="Flight number, e.g. AT123"),
-                      "P3", tools.get_flight_status))
-    reg.register(Tool("find_bookings_by_phone", "Bookings whose contact number matches the caller ID",
-                      _schema(phone="E.164 number"), "P1", tools.find_bookings_by_phone))
-    reg.register(Tool("get_booking", "A booking by reference", _schema(booking_ref="Six characters"),
-                      "P1", tools.get_booking))
-    reg.register(Tool("get_alternatives", "Alternative flights on a route",
-                      _schema(origin="IATA code", destination="IATA code"), "P2", tools.get_alternatives))
-    reg.register(Tool("rebook", "Move a booking to another flight (hold and commit)",
-                      _schema(booking_ref="Six characters", from_flight="Disrupted flight", to_flight="New flight"),
-                      "P0", tools.rebook))
+    reg.register(Tool("get_flight_status", "Status of a flight (public information).",
+                      _schema(flight="Flight number, e.g. AT123"), "P3", tools.get_flight_status))
+    reg.register(Tool("get_alternatives", "Bookable alternative flights on a route.",
+                      _schema(origin="IATA airport code", destination="IATA airport code"), "P2",
+                      tools.get_alternatives))
+    reg.register(Tool("lookup_caller_id", "Masked summary of bookings whose contact number matches "
+                      "the caller ID (identity level LIKELY). Never returns booking data.",
+                      _schema(phone="Caller number, E.164"), "P1", tools.lookup_caller_id))
+    reg.register(Tool("verify_booking", "Check a booking reference and surname. Returns the booking "
+                      "only when both match; otherwise just match=false.",
+                      _schema(booking_ref="Six characters", surname="Lead passenger surname"), "P1",
+                      tools.verify_booking))
+    reg.register(Tool("get_booking", "A booking by reference. Needs a VERIFIED identity token for "
+                      "that same booking.", _schema(booking_ref="Six characters"), "P1", tools.get_booking,
+                      booking_scoped=True))
+    reg.register(Tool("rebook", "Move the verified booking to another flight (hold and commit, "
+                      "idempotent). Needs a VERIFIED identity token for that booking. May return "
+                      "'deferred' when the reservation system is saturated.",
+                      _schema(booking_ref="Six characters", from_flight="Disrupted flight",
+                              to_flight="New flight"), "P0", tools.rebook,
+                      booking_scoped=True, read_only=False))
     return reg

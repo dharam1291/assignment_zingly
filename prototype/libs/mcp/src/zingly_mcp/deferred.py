@@ -1,4 +1,4 @@
-"""Deferred commit (design §5, P0 fallback): the caller's choice is recorded and committed
+"""Deferred commit (design section 5, P0 fallback): the caller's choice is recorded and committed
 later under the same idempotency key, then confirmed by SMS. Needs business sign-off."""
 
 from __future__ import annotations

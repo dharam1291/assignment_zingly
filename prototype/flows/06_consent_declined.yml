@@ -1,0 +1,11 @@
+title: Caller declines the AI assistant
+summary: The consent prompt comes first; "no" goes straight to a person.
+demonstrates: [consent, AI disclosure is not interruptible, handover]
+setup:
+  - reset: true
+calls:
+  - dialed: "+448000001234"
+    caller: "+15550000005"
+    steps:
+      - say: "no"
+        expect: {status: AGENT_HANDOVER, handover: {subcategory: consent_declined}}

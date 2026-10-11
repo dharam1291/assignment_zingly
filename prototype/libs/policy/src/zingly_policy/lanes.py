@@ -1,4 +1,4 @@
-"""Priority lanes over one shared rate limit (design §5 "Under the hood").
+"""Priority lanes over one shared rate limit (design section 5 "Under the hood").
 
 Each lane is a token bucket refilling at its share of the parent rate. A parent bucket,
 set a little below the reservation system's hard limit, caps the total. Higher lanes may
@@ -18,6 +18,8 @@ from collections import Counter
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Mapping, Protocol
+
+from zingly_core import tracing
 
 
 class Lane(str, Enum):
@@ -105,9 +107,18 @@ class LaneAdmission:
             for lane, share in config.shares.items()
         }
         self._counts: Counter[str] = Counter()
+        self._paused: dict[Lane, float] = {}
+
+    def pause(self, lanes: list[str], seconds: float) -> None:
+        """Demo/ops control: treat these lanes as saturated for a while (no own tokens, no borrowing)."""
+        until = self._clock() + seconds
+        for lane in lanes:
+            self._paused[Lane(lane)] = until
 
     def _try_take(self, lane: Lane) -> bool:
         # No await in here, so this check-and-take is atomic on the event loop.
+        if self._paused.get(lane, 0.0) > self._clock():
+            return False
         if not self._parent.available():
             return False
         donors = [lane]
@@ -127,7 +138,13 @@ class LaneAdmission:
         """Wait up to the lane's budget (or ``wait_s`` for background jobs) for a token."""
         lane = Lane(lane)
         budget = self.config.wait_s.get(lane, 0.0) if wait_s is None else wait_s
-        deadline = self._clock() + budget
+        with tracing.span("policy.admission", "policy", lane=lane.value, wait_budget_s=budget) as sp:
+            started = self._clock()
+            admitted = await self._acquire(lane, started + budget)
+            sp.set(admitted=admitted, waited_ms=round((self._clock() - started) * 1000, 1))
+            return admitted
+
+    async def _acquire(self, lane: Lane, deadline: float) -> bool:
         waited = False
         while True:
             if self._try_take(lane):

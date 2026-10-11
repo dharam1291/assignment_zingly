@@ -5,7 +5,7 @@ import uuid
 from dataclasses import asdict, dataclass, field
 from typing import Any, Callable, Mapping, Protocol
 
-from zingly_core import IdentityLevel, TenantContext
+from zingly_core import IdentityLevel, TenantContext, tracing
 
 
 @dataclass
@@ -80,6 +80,12 @@ class GenesysHandoverBuilder:
         return " ".join(parts)
 
     def build(self, req: HandoverRequest) -> dict:
+        with tracing.span("handover.build", "handover", category=req.category, subcategory=req.subcategory) as sp:
+            payload = self._build(req)
+            sp.set(queue=payload["routing"]["queue"], attempted_actions=len(req.attempted_actions))
+            return payload
+
+    def _build(self, req: HandoverRequest) -> dict:
         cfg = self.config
         queue = cfg.queues.get(req.category, cfg.default_queue)
         now = self._clock()

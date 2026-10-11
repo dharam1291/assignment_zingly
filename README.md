@@ -16,7 +16,7 @@ Twilio stays the carrier, Genesys stays the contact centre, and the reservation 
 | # | Deliverable | Where |
 |---|---|---|
 | 1 | **Solution design** (5 pages) | [Web page](https://dharam1291.github.io/assignment_zingly/) · [Markdown](docs/SOLUTION_DESIGN.md) |
-| 2 | **Prototype**: a simulated disruption call end to end, a 5 req/s mock reservation system, the handover payload and a spike test | [`prototype/`](prototype/README.md) · `cd prototype && make install test run demo spike` |
+| 2 | **Prototype**: a simulated disruption call end to end through Genesys (northbound), the voice agent, a real MCP server and a 5 req/s airline reservation system (southbound); handover payload, 14 runnable flows with recorded traces, and a spike test | [`prototype/`](prototype/README.md) · `cd prototype && ./start_up.sh` |
 
 ## View it
 

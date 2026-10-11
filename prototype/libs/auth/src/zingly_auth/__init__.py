@@ -1,4 +1,4 @@
-"""Auth service (design §4): identity is a level, issued here and never by a model.
+"""Auth service (design section 4): identity is a level, issued here and never by a model.
 
 Verify on demand: a caller-ID match gives LIKELY for free; booking reference + surname gives
 VERIFIED. Three failures lock self-service for the caller's number. A failure never says

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Mapping
 
-from zingly_core import TenantContext
+from zingly_core import TenantContext, tracing
 
 from zingly_ai_router.business_routing import BusinessRouter, RoutingConfig
 from zingly_ai_router.classifier import IntentClassifier, KeywordClassifier
@@ -73,6 +73,14 @@ class AIRouter:
         return self.welcome.opening(ctx.tenant_id)
 
     def route(self, ctx: TenantContext, state: RouterState, text: str) -> RouteDecision:
+        with tracing.span("ai_router.route", "ai-router", active=state.active_domain,
+                          pending=state.pending_question) as sp:
+            decision = self._route(ctx, state, text)
+            sp.set(kind=decision.kind, path=decision.path, agent=decision.agent, yes_no=decision.yes_no,
+                   handover=decision.subcategory or None)
+            return decision
+
+    def _route(self, ctx: TenantContext, state: RouterState, text: str) -> RouteDecision:
         fp = self.fast_path.match(text)
 
         if fp and fp.kind == "agent":

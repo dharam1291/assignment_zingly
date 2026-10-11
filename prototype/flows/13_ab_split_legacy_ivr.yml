@@ -1,0 +1,10 @@
+title: Genesys A/B split sends the call to the legacy IVR
+summary: The bot share of the inbound flow is set to 0%, so Genesys never calls Zingly.
+demonstrates: [A/B rollout owned by Genesys]
+setup:
+  - reset: true
+  - bot_percent: {dialed: "+448000001234", percent: 0}
+calls:
+  - dialed: "+448000001234"
+    caller: "+15550000401"
+    expect_routed: legacy_ivr

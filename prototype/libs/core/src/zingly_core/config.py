@@ -1,11 +1,14 @@
 """One configuration file, many tenants, one deployment.
 
-File layout (TOML)::
+File layout (YAML)::
 
-    [defaults.<module>]          # applies to every tenant
-    [tenants.<id>]               # tenant identity and routing keys
-    dialed_numbers = ["+44..."]
-    [tenants.<id>.<module>]      # overrides for that tenant only
+    platform:                    # deployment-wide: service URLs, ports, trace sink
+    defaults:
+      <module>: {...}            # applies to every tenant
+    tenants:
+      <id>:
+        dialed_numbers: [...]    # how a call is matched to the tenant
+        <module>: {...}          # overrides for that tenant only (deep-merged)
 
 Each module receives only its own merged section via :meth:`TenantConfigStore.section`.
 """
@@ -13,9 +16,10 @@ Each module receives only its own merged section via :meth:`TenantConfigStore.se
 from __future__ import annotations
 
 import copy
-import tomllib
 from pathlib import Path
 from typing import Any, Mapping
+
+import yaml
 
 _RESERVED = {"display_name", "dialed_numbers", "enabled"}
 
@@ -36,8 +40,9 @@ def deep_merge(base: Mapping[str, Any], override: Mapping[str, Any]) -> dict[str
 
 class TenantConfigStore:
     def __init__(self, raw: Mapping[str, Any]):
-        defaults = raw.get("defaults", {})
-        tenants = raw.get("tenants", {})
+        self._platform = dict(raw.get("platform") or {})
+        defaults = raw.get("defaults") or {}
+        tenants = raw.get("tenants") or {}
         if not tenants:
             raise ValueError("config has no [tenants.*] blocks")
         self._tenants: dict[str, dict[str, Any]] = {}
@@ -45,6 +50,7 @@ class TenantConfigStore:
         for tenant_id, block in tenants.items():
             if not block.get("enabled", True):
                 continue
+            block = block or {}
             modules = {k: v for k, v in block.items() if k not in _RESERVED}
             merged = deep_merge(defaults, modules)
             merged["_meta"] = {
@@ -60,8 +66,11 @@ class TenantConfigStore:
 
     @classmethod
     def from_file(cls, path: str | Path) -> "TenantConfigStore":
-        with open(path, "rb") as fh:
-            return cls(tomllib.load(fh))
+        with open(path, encoding="utf-8") as fh:
+            return cls(yaml.safe_load(fh) or {})
+
+    def platform(self, key: str, default: Any = None) -> Any:
+        return copy.deepcopy(self._platform.get(key, default))
 
     @property
     def tenant_ids(self) -> list[str]:

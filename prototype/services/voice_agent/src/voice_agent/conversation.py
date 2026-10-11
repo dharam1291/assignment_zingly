@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from zingly_agents import AgentState, AgentTurn
 from zingly_ai_router import AIRouter, RouterState
 from zingly_channel import Outbound
-from zingly_core import IdentityLevel, TenantContext
+from zingly_core import IdentityLevel, TenantContext, tracing
 from zingly_handover import AttemptedAction, HandoverRequest
 
 from voice_agent.runtime import TenantRuntime
@@ -29,6 +29,7 @@ class Session:
     transcript: list[tuple[str, str]] = field(default_factory=list)
     handover: dict | None = None
     created_at: float = field(default_factory=time.time)
+    last_activity: float = field(default_factory=time.time)
 
 
 def new_session(rt: TenantRuntime, call_id: str, caller_number: str) -> tuple[Session, dict]:
@@ -42,9 +43,12 @@ def new_session(rt: TenantRuntime, call_id: str, caller_number: str) -> tuple[Se
 
 async def handle_turn(rt: TenantRuntime, session: Session, raw: dict) -> dict:
     started = time.perf_counter()
+    session.last_activity = time.time()
     if session.status != IN_PROGRESS:
         return _result(rt, session, Outbound("This conversation has ended."), None, None, started)
-    utterance = rt.channel.inbound(raw)
+    with tracing.span("channel.inbound", "channel", channel=rt.channel.name) as sp:
+        utterance = rt.channel.inbound(raw)
+        sp.set(kind=utterance.kind, chars=len(utterance.text))
     session.transcript.append(("caller", utterance.text))
     decision = session.router.route(session.ctx, session.router_state, utterance.text)
 
@@ -103,4 +107,5 @@ def _result(rt: TenantRuntime, session: Session, out: Outbound, path: str | None
         "conversation_status": session.status,
         "handover": session.handover if session.status == AGENT_HANDOVER else None,
         "latency_ms": round((time.perf_counter() - started) * 1000, 1),
+        "trace_id": (tracing.current().trace_id if tracing.current() else None),
     }

@@ -15,7 +15,7 @@ class Classification:
 
 
 class IntentClassifier(Protocol):
-    """The small classifier of design §3. LLM version: same signature, one small model call."""
+    """The small classifier of design section 3. LLM version: same signature, one small model call."""
 
     def classify(self, text: str) -> Classification: ...
 

@@ -15,7 +15,7 @@ class Utterance:
 @dataclass(frozen=True)
 class Outbound:
     text: str
-    interruptible: bool = True  # AI disclosure and itinerary read-back are not (design §3)
+    interruptible: bool = True  # AI disclosure and itinerary read-back are not (design section 3)
 
 
 @dataclass

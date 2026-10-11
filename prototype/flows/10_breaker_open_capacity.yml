@@ -1,0 +1,18 @@
+title: Failing reservation system opens the breaker; Genesys stops sending calls to the bot
+summary: >
+  Five calls in a row hit PSS errors. The circuit breaker in the MCP server opens, the
+  Genesys capacity check sees it and routes the next caller straight to a person.
+demonstrates: [circuit breaker, capacity check, bot is never the only path]
+setup:
+  - reset: true
+  - pss_mode: {airline: atlantica, error_rate: 1.0}
+calls:
+  - {dialed: "+448000001234", caller: "+15550000101", steps: [{say: "yes"}, {say: "booking ABC123 was cancelled"}, {say: Smith}]}
+  - {dialed: "+448000001234", caller: "+15550000102", steps: [{say: "yes"}, {say: "booking ABC123 was cancelled"}, {say: Smith}]}
+  - {dialed: "+448000001234", caller: "+15550000103", steps: [{say: "yes"}, {say: "booking ABC123 was cancelled"}, {say: Smith}]}
+  - {dialed: "+448000001234", caller: "+15550000104", steps: [{say: "yes"}, {say: "booking ABC123 was cancelled"}, {say: Smith}]}
+  - {dialed: "+448000001234", caller: "+15550000105", steps: [{say: "yes"}, {say: "booking ABC123 was cancelled"}, {say: Smith}]}
+  - dialed: "+448000001234"
+    caller: "+15550000106"
+    expect_routed: human_queue
+    expect_reason_contains: reservation_system_unhealthy

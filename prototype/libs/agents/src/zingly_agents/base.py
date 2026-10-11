@@ -17,7 +17,7 @@ class AgentTurn:
 @dataclass
 class AgentState:
     """The agents' slice of a conversation. Shared by all domain agents so identity, booking
-    and a half-finished task survive a topic change (design §3)."""
+    and a half-finished task survive a topic change (design section 3)."""
 
     active: str | None = None
     suspended: str | None = None
@@ -25,6 +25,7 @@ class AgentState:
     last_question: dict[str, str] = field(default_factory=dict)  # agent -> question to re-ask
     booking: dict | None = None
     verified_by: str | None = None
+    identity_token: str | None = None                            # from auth, sent to MCP in _meta
     ref_candidate: str | None = None
     caller_hint: dict | None = None
     hint_checked: bool = False

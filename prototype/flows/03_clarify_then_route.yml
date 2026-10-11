@@ -1,0 +1,20 @@
+title: Ambiguous request, one clarifying question, then routed
+summary: >
+  "The cancelled flight and the hotel" matches two domains equally, so the router asks one
+  short question instead of guessing; the answer routes to the right agent.
+demonstrates: [disambiguation, clarify path, topic routing]
+setup:
+  - reset: true
+calls:
+  - dialed: "+448000001234"
+    caller: "+15550000002"
+    steps:
+      - say: "yes"
+      - say: "it's about the cancelled flight and the hotel"
+        expect: {path: clarify, contains: "Is this about"}
+      - say: "the flight status please"
+        expect: {agent: flight_status, contains: "Which flight number"}
+      - say: "AT200"
+        expect: {contains: "delayed by about 45 minutes"}
+      - say: "no"
+        expect: {status: COMPLETED}

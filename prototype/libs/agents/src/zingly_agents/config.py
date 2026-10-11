@@ -30,12 +30,15 @@ class Wording:
     anything_else: str = "Is there anything else I can help with?"
     rebook_failed: str = ("I wasn't able to complete that change and your booking is unchanged. "
                           "I'll pass you to a colleague with everything we've done so far.")
+    rebook_unconfirmed: str = ("I couldn't confirm whether that change went through. We'll finish checking in "
+                               "the background and text you the result. I'll pass you to a colleague now with "
+                               "everything we've done.")
     ask_flight_number: str = "Which flight number is it?"
     status_line: str = "{flight} to {destination} is {status}."
     status_cancelled_hint: str = "I can help you rebook if you like."
     faq_no_answer: str = "I don't have that answer, so I'll pass you to a colleague."
     resume: str = "Now, back to your {task}:"
-    # Lane fallbacks (design §5 table): what the caller hears when a lane is full.
+    # Lane fallbacks (design section 5 table): what the caller hears when a lane is full.
     p0_deferred: str = ("I've noted your choice of {to_flight} at {departure}. We're confirming it now, "
                         "and you'll get a text within 30 minutes.")
     p1_as_of: str = "This is as of {as_of}, and I'll check again before I change anything."

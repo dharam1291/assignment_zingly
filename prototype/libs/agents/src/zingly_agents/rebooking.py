@@ -31,7 +31,7 @@ class RebookingAgent:
             return await self._on_confirm(ctx, turn, state)
         return await self._start(ctx, turn, state)
 
-    # ---- identification (verify on demand, design §4) ------------------------------
+    # ---- identification (verify on demand, design section 4) ------------------------------
     async def _start(self, ctx: TenantContext, turn: AgentTurn, state: AgentState) -> AgentReply:
         if turn.identity >= IdentityLevel.VERIFIED and state.booking:
             return await self._offer(ctx, state, turn.identity, "")
@@ -62,6 +62,7 @@ class RebookingAgent:
         state.attempt("verify_identity", res.outcome)
         if res.outcome == "verified":
             state.booking, state.verified_by = res.booking, res.verified_by
+            state.identity_token = res.identity_token
             if res.data_as_of:
                 state.data_notes.append(f"booking checked against saved copy as of {slots.hhmm(res.data_as_of)}")
             return await self._offer(ctx, state, IdentityLevel.VERIFIED, self.w.verified)
@@ -75,7 +76,7 @@ class RebookingAgent:
     # ---- options -------------------------------------------------------------------
     async def _offer(self, ctx: TenantContext, state: AgentState, level: IdentityLevel, preface: str) -> AgentReply:
         booking = state.booking
-        status = await self.tools.call(ctx, "get_flight_status", {"flight": booking["flight"]}, level)
+        status = await self.tools.call(ctx, "get_flight_status", {"flight": booking["flight"]})
         if status.status in ("ok", "stale"):
             state.disruption = {k: status.data.get(k) for k in ("flight", "status", "reason", "origin", "destination")}
             if status.data["status"] not in ("CANCELLED", "DELAYED"):
@@ -93,7 +94,7 @@ class RebookingAgent:
                             identity=level)
 
         origin, dest = state.disruption["origin"], state.disruption["destination"]
-        alts = await self.tools.call(ctx, "get_alternatives", {"origin": origin, "destination": dest}, level)
+        alts = await self.tools.call(ctx, "get_alternatives", {"origin": origin, "destination": dest})
         options = [o for o in (alts.data or []) if o["flight"] != booking["flight"]][: self.cfg.max_options]
         state.attempt("get_alternatives", alts.status, alts.detail, origin=origin, destination=dest)
         if alts.status not in ("ok", "stale") or not options:
@@ -135,7 +136,7 @@ class RebookingAgent:
             return ask("Sorry,", "shall I go ahead with that change, yes or no?", "confirm_rebook")
         b, c = state.booking, state.chosen
         args = {"booking_ref": b["ref"], "from_flight": b["flight"], "to_flight": c["flight"]}
-        res = await self.tools.call(ctx, "rebook", args, turn.identity)
+        res = await self.tools.call(ctx, "rebook", args, state.identity_token)
         state.attempt("rebook", res.status, res.detail, to_flight=c["flight"])
         if res.status == "ok":
             state.booking = {**b, "flight": c["flight"]}
@@ -148,4 +149,7 @@ class RebookingAgent:
         if res.status == "conflict" and state.conflicts == 0:
             state.conflicts += 1
             return await self._offer(ctx, state, turn.identity, self.w.seat_gone)
+        if "outcome unknown" in (res.detail or ""):
+            return handover(self.w.rebook_unconfirmed, CATEGORY, "rebook_unconfirmed",
+                            f"rebook outcome unknown: {res.detail}")
         return handover(self.w.rebook_failed, CATEGORY, "rebook_failed", f"rebook {res.status}: {res.detail}")

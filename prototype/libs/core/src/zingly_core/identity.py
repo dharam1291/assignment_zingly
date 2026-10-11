@@ -2,7 +2,7 @@ from enum import IntEnum
 
 
 class IdentityLevel(IntEnum):
-    """How sure we are who the caller is (design §4). Issued by auth, never by a model."""
+    """How sure we are who the caller is (design section 4). Issued by auth, never by a model."""
 
     UNKNOWN = 0
     LIKELY = 1

@@ -1,9 +1,12 @@
 """Disruption spike: many simultaneous callers against a 5 req/s reservation system.
 
-Needs the mock PSS (:9001) and the voice agent (:8080) running (``make run``).
+Needs every service running (``./start_up.sh``).
 
-    python scripts/spike.py --mode compare            # unprotected vs protected, side by side
+    python scripts/spike.py                            # unprotected vs protected, side by side
     python scripts/spike.py --mode protected --calls 200 --rate 8
+
+Calls go straight to the voice agent gateway (Genesys adds nothing to this measurement);
+protection is switched on the MCP server, where the lanes and the saved copy live.
 
 Each simulated caller is a real passenger from the cancelled flight. A share of them
 rebook (verify, choose, confirm); the rest ask for flight status and hang up.
@@ -68,15 +71,18 @@ def delta(after: dict, before: dict) -> dict:
 async def run_mode(args, protected: bool) -> dict:
     async with httpx.AsyncClient(base_url=args.zingly, timeout=60,
                                  limits=httpx.Limits(max_connections=1000)) as api, \
-            httpx.AsyncClient(base_url=args.pss, timeout=10) as pss:
+            httpx.AsyncClient(base_url=args.pss, timeout=10) as pss, \
+            httpx.AsyncClient(base_url=args.mcp, timeout=10) as mcp:
         await pss.post("/admin/reset")
-        await api.post(f"/v1/admin/tenants/{args.tenant}/protection", json={"enabled": protected})
+        await api.post("/v1/admin/reset")
+        await mcp.post(f"/admin/{args.tenant}/reset")
+        await mcp.post(f"/admin/{args.tenant}/protection", json={"enabled": protected})
         bookings = (await pss.get(f"/admin/seed/{args.tenant}")).json()["bookings"]
         random.Random(7).shuffle(bookings)
         if protected and not args.no_prewarm:
             warm = (await api.post("/v1/events/disruption", json={"tenant_id": args.tenant, "flight": args.flight})).json()
             print(f"  pre-warm: {warm}")
-        za = (await api.get("/v1/admin/stats")).json()[args.tenant]
+        za = (await mcp.get("/admin/stats")).json()[args.tenant]
         pa = (await pss.get("/stats")).json()[args.tenant]
 
         rng = random.Random(args.seed)
@@ -93,9 +99,9 @@ async def run_mode(args, protected: bool) -> dict:
         if protected:
             await asyncio.sleep(args.drain_wait)  # let deferred commits drain
 
-        zb = (await api.get("/v1/admin/stats")).json()[args.tenant]
+        zb = (await mcp.get("/admin/stats")).json()[args.tenant]
         pb = (await pss.get("/stats")).json()[args.tenant]
-        await api.post(f"/v1/admin/tenants/{args.tenant}/protection", json={"enabled": True})
+        await mcp.post(f"/admin/{args.tenant}/protection", json={"enabled": True})
 
     pss_d = delta(pb, pa)
     lat = sorted(latencies)
@@ -141,6 +147,7 @@ async def main() -> None:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--zingly", default="http://127.0.0.1:8080")
     p.add_argument("--pss", default="http://127.0.0.1:9001")
+    p.add_argument("--mcp", default="http://127.0.0.1:8100")
     p.add_argument("--tenant", default="atlantica")
     p.add_argument("--dialed", default="+448000001234")
     p.add_argument("--flight", default="AT123")

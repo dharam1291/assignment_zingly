@@ -14,8 +14,8 @@ class Tools:
         self.rebook_status, self.alts_status = rebook_status, alts_status
         self.calls = []
 
-    async def call(self, ctx, name, args, level):
-        self.calls.append((name, level))
+    async def call(self, ctx, name, args, identity_token=None):
+        self.calls.append((name, identity_token))
         if name == "get_flight_status":
             return NS(status="ok", source="saved_copy", as_of=0, detail="",
                       data={"flight": args["flight"], "status": "CANCELLED", "reason": "weather",
@@ -23,7 +23,7 @@ class Tools:
         if name == "get_alternatives":
             return NS(status=self.alts_status, data=ALTS, source="saved_copy", as_of=0, detail="")
         if name == "rebook":
-            assert level >= IdentityLevel.VERIFIED
+            assert identity_token == "signed-token"
             data = {"confirmation": "RB00001"} if self.rebook_status == "ok" else {}
             return NS(status=self.rebook_status, data=data, source="pss", as_of=None, detail="")
         raise AssertionError(name)
@@ -38,7 +38,8 @@ class Auth:
     async def verify(self, ctx, number, ref, surname):
         ok = ref == "ABC123" and surname.lower() == "smith"
         return NS(outcome="verified" if ok else "failed", booking=BOOKING if ok else None,
-                  verified_by="booking_ref+surname", data_as_of=None, level=IdentityLevel.VERIFIED)
+                  verified_by="booking_ref+surname", data_as_of=None, level=IdentityLevel.VERIFIED,
+                  identity_token="signed-token" if ok else None)
 
 
 CFG = AgentsConfig.from_config({"airports": {"BOS": "Boston"},
@@ -105,4 +106,4 @@ def test_flight_status_needs_no_identity_and_labels_saved_copy():
     c = Call()
     r = c.say("flight_status", "status of AT123?")
     assert "AT123 to Boston is cancelled" in r.text and "as of" in r.text and r.done
-    assert c.tools.calls == [("get_flight_status", IdentityLevel.UNKNOWN)]
+    assert c.tools.calls == [("get_flight_status", None)]  # public: no identity sent

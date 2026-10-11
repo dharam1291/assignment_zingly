@@ -7,7 +7,7 @@ name = "zingly-core"
 version = "0.1.0"
 description = "Shared base: tenant context, identity levels, tenant config loader"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = ["pyyaml>=6"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

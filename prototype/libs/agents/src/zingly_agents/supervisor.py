@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from zingly_core import TenantContext
+from zingly_core import TenantContext, tracing
 
 from zingly_agents.base import AgentReply, AgentState, AgentTurn, DomainAgent
 from zingly_agents.config import AgentsConfig
@@ -20,6 +20,14 @@ class Supervisor:
         self.cfg = config
 
     async def handle(self, ctx: TenantContext, agent: str, turn: AgentTurn, state: AgentState) -> AgentReply:
+        with tracing.span("agents.handle", "agents", agent=agent, pending=state.pending.get(agent)) as sp:
+            reply = await self._handle(ctx, agent, turn, state)
+            sp.set(next_question=reply.pending_question, done=reply.done or None, resumed=reply.resumed,
+                   handover=(reply.handover or {}).get("subcategory"),
+                   identity=reply.identity.label if reply.identity is not None else None)
+            return reply
+
+    async def _handle(self, ctx: TenantContext, agent: str, turn: AgentTurn, state: AgentState) -> AgentReply:
         if state.active and state.active != agent and state.pending.get(state.active):
             state.suspended = state.active
         state.active = agent

@@ -1,4 +1,4 @@
-"""Zingly's own saved copy of reservation data (design §5): not a PSS replica.
+"""Zingly's own saved copy of reservation data (design section 5): not a PSS replica.
 
 * answer from the copy while it is fresh
 * "ask once": concurrent misses on one key share a single origin load (single-flight)

@@ -1,4 +1,4 @@
-"""Policy engine (design §5, §8): every tool call passes here before it reaches MCP.
+"""Policy engine (design section 5, section 8): every tool call passes here before it reaches MCP.
 
 * ``guardrails``  - which tools an identity level may use (allow-list per tenant)
 * ``lanes``       - priority lanes P0..P3 sharing the reservation system's rate limit

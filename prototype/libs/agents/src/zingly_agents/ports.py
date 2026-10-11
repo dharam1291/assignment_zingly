@@ -4,13 +4,16 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
-from zingly_core import IdentityLevel, TenantContext
+from zingly_core import TenantContext
 
 
 class ToolPort(Protocol):
-    """MCP tool call. Result exposes .status .data .source .as_of .detail"""
+    """MCP ``tools/call``. Result exposes .status .data .source .as_of .detail.
 
-    async def call(self, ctx: TenantContext, name: str, args: dict, level: IdentityLevel) -> Any: ...
+    ``identity_token`` is the signed assertion from auth; it travels in MCP ``_meta``, never in
+    the tool arguments, so a model can neither see nor forge it."""
+
+    async def call(self, ctx: TenantContext, name: str, args: dict, identity_token: str | None = None) -> Any: ...
 
 
 class AuthPort(Protocol):

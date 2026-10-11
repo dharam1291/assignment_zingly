@@ -1,6 +1,9 @@
-"""Mock PSS over HTTP. Hard limit per airline (default 5 req/s, sliding 1 s window).
+"""Southbound simulator: the airline's reservation system (PSS) over HTTP.
 
-Run: ``uvicorn mock_pss.app:app --port 9001``  (env MOCK_PSS_RPS, MOCK_PSS_LATENCY_MS)
+Hard limit per airline (default 5 req/s, sliding 1 s window) answered with 429, idempotent
+rebooking, and fault injection (``/admin/mode``) for brownout and outage scenarios.
+
+Run: ``uvicorn mock_pss.app:app --port 9001`` (env MOCK_PSS_RPS, MOCK_PSS_LATENCY_MS, ZINGLY_TRACE_FILE)
 """
 
 from __future__ import annotations
@@ -13,6 +16,8 @@ from collections import Counter, deque
 
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
+
+from zingly_core import tracing
 
 from mock_pss.data import seed
 
@@ -62,6 +67,16 @@ def create_app(rps: int | None = None, latency_ms: tuple[int, int] | None = None
         airline = parts[0] if parts else ""
         if airline not in state.airlines:  # /stats, /admin/* are not rate limited
             return await call_next(request)
+        with tracing.continue_trace(request.headers.get("traceparent")), tracing.span(
+                "pss.handle", "airline-pss", airline=airline, method=request.method,
+                resource=parts[1] if len(parts) > 1 else "") as sp:
+            response = await handle(request, call_next, airline, parts)
+            sp.set(http_status=response.status_code, limit_rps=state.rps)
+            if response.status_code >= 400:
+                sp.status = "error"
+            return response
+
+    async def handle(request: Request, call_next, airline: str, parts: list[str]):
         now = time.monotonic()
         counts = state.counts[airline]
         counts["requests"] += 1
@@ -156,6 +171,14 @@ def create_app(rps: int | None = None, latency_ms: tuple[int, int] | None = None
         state.extra_latency_ms[code] = int(body.get("extra_latency_ms", 0))
         return {"ok": True}
 
+    @app.get("/admin/booking/{airline}/{ref}")
+    async def booking_peek(airline: str, ref: str):
+        """Read a booking without touching the rate limit or the counters (for flow checks)."""
+        b = airline_or_404(airline).bookings.get(ref.upper())
+        if not b:
+            raise HTTPException(404, "booking not found")
+        return b
+
     @app.get("/admin/seed/{airline}")
     async def seed_dump(airline: str):
         return {"bookings": list(airline_or_404(airline).bookings.values())}
@@ -163,4 +186,5 @@ def create_app(rps: int | None = None, latency_ms: tuple[int, int] | None = None
     return app
 
 
+tracing.configure("airline-pss")  # sink path from ZINGLY_TRACE_FILE, if set
 app = create_app()

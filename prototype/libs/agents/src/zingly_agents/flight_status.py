@@ -9,7 +9,7 @@ from zingly_agents.ports import ToolPort
 
 
 class FlightStatusAgent:
-    """Public information: needs no identity check (design §4)."""
+    """Public information: needs no identity check (design section 4)."""
 
     name = "flight_status"
 
@@ -27,7 +27,7 @@ class FlightStatusAgent:
                 return handover("Let me pass you to a colleague.", "flight_status", "flight_unknown",
                                 "could not get a flight number")
             return ask("", self.w.ask_flight_number, "flight_number")
-        res = await self.tools.call(ctx, "get_flight_status", {"flight": flight}, turn.identity)
+        res = await self.tools.call(ctx, "get_flight_status", {"flight": flight})
         state.attempt("get_flight_status", res.status, res.detail, flight=flight)
         if res.status == "not_found":
             return ask(f"I couldn't find {flight}.", self.w.ask_flight_number, "flight_number")

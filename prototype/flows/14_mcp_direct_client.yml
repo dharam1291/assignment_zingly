@@ -1,0 +1,21 @@
+title: MCP server used directly, like Codex or the MCP Inspector would
+summary: >
+  A plain MCP client connects to the Atlantica endpoint over Streamable HTTP, lists the
+  tools, reads public data, and tries to rebook: denied without an identity token, denied
+  with a token for another booking, allowed with a VERIFIED token for this booking.
+demonstrates: [real MCP server, guardrails, booking scope, signed identity token, idempotent write]
+setup:
+  - reset: true
+mcp:
+  tenant: atlantica
+  steps:
+    - list_tools: {expect_contains: [get_flight_status, verify_booking, rebook]}
+    - call: {tool: get_flight_status, args: {flight: AT123}, expect: {status: ok}}
+    - call: {tool: verify_booking, args: {booking_ref: ABC123, surname: Jones}, expect: {status: ok, data: {match: false}}}
+    - call: {tool: rebook, args: {booking_ref: ABC123, from_flight: AT123, to_flight: AT127}, expect: {status: denied}}
+    - call: {tool: rebook, args: {booking_ref: ABC123, from_flight: AT123, to_flight: AT127},
+             identity: {level: verified, booking_ref: ZZZ999}, expect: {status: denied}}
+    - call: {tool: rebook, args: {booking_ref: ABC123, from_flight: AT123, to_flight: AT127},
+             identity: {level: verified, booking_ref: ABC123}, expect: {status: ok}}
+    - call: {tool: rebook, args: {booking_ref: ABC123, from_flight: AT123, to_flight: AT127},
+             identity: {level: verified, booking_ref: ABC123}, expect: {status: ok, data: {replayed: true}}}

@@ -6,7 +6,7 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Mapping, Protocol
 
-from zingly_core import TenantContext
+from zingly_core import TenantContext, tracing
 
 
 @dataclass(frozen=True)
@@ -92,6 +92,12 @@ class InMemorySavedCopy:
 
     async def get_or_load(self, ctx: TenantContext, key: str, loader: Loader,
                           ttl_s: float | None = None) -> Lookup:
+        with tracing.span("saved_copy.get_or_load", "saved-copy", key=key.split(":")[0]) as sp:
+            result = await self._get_or_load(ctx, key, loader, ttl_s)
+            sp.set(source=result.source, error=result.error)
+            return result
+
+    async def _get_or_load(self, ctx: TenantContext, key: str, loader: Loader, ttl_s: float | None) -> Lookup:
         current = self.peek(ctx, key)
         if current.source == "fresh":
             self._count(ctx, "hit")

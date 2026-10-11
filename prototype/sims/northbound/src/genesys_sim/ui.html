@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Genesys Simulator</title>
+<style>
+  :root {
+    --bg: #f5f6f8; --panel: #ffffff; --ink: #1d2433; --muted: #5b6475; --line: #dde1e8;
+    --bot: #eef3ff; --caller: #e9f8ef; --accent: #2f5bea; --warn: #b4540a; --bad: #b42318; --good: #157f3c;
+    --code: #0f172a; --code-ink: #dbe4ff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #11141a; --panel: #1a1f29; --ink: #e6e9ef; --muted: #9aa3b5; --line: #2b3240;
+      --bot: #1d2a4a; --caller: #183326; --accent: #7c9cff; --warn: #f0a25a; --bad: #ff7a70; --good: #5fd18b;
+      --code: #0b0f17; --code-ink: #c8d3f5;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.45 system-ui, -apple-system, Segoe UI, sans-serif; background: var(--bg); color: var(--ink); }
+  header { padding: 14px 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
+  header h1 { margin: 0; font-size: 17px; }
+  header p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+  main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; padding: 16px; }
+  @media (max-width: 900px) { main { grid-template-columns: minmax(0, 1fr); } }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; min-width: 0; }
+  h2 { margin: 0 0 10px; font-size: 15px; }
+  label { font-size: 12px; color: var(--muted); display: block; margin-bottom: 3px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: end; margin-bottom: 10px; }
+  .row > div { flex: 1 1 160px; min-width: 0; }
+  select, input, button { font: inherit; padding: 7px 9px; border-radius: 7px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); width: 100%; }
+  button { background: var(--accent); color: #fff; border: 0; cursor: pointer; width: auto; }
+  button.secondary { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+  button:disabled { opacity: .5; cursor: default; }
+  #chat { height: 340px; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; padding: 10px; background: var(--bg); }
+  .msg { max-width: 85%; padding: 7px 10px; border-radius: 10px; margin: 6px 0; overflow-wrap: anywhere; }
+  .bot { background: var(--bot); }
+  .caller { background: var(--caller); margin-left: auto; }
+  .meta { font-size: 11px; color: var(--muted); margin-top: 3px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+  .chips button { padding: 4px 9px; font-size: 12px; }
+  .status { font-weight: 600; }
+  .pop { border-left: 4px solid var(--warn); padding: 8px 12px; background: var(--bg); border-radius: 6px; }
+  .pop dt { color: var(--muted); font-size: 12px; margin-top: 6px; }
+  .pop dd { margin: 0; overflow-wrap: anywhere; }
+  pre { background: var(--code); color: var(--code-ink); padding: 10px; border-radius: 8px; overflow-x: auto; font-size: 12px; max-height: 360px; }
+  .empty { color: var(--muted); font-style: italic; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Genesys simulator · northbound</h1>
+  <p>Caller softphone → Genesys inbound flow (A/B split, capacity check) → Zingly voice agent → MCP server → airline PSS</p>
+</header>
+<main>
+  <section>
+    <h2>Caller softphone</h2>
+    <div class="row">
+      <div><label for="dialed">Line (dialed number)</label>
+        <select id="dialed">
+          <option value="+448000001234">Atlantica +448000001234</option>
+          <option value="+4780001234">Nordica +4780001234</option>
+        </select></div>
+      <div><label for="caller">Caller ID</label><input id="caller" value="+447700900001"></div>
+      <button id="dial">Dial</button>
+    </div>
+    <div id="chat"><p class="empty">Dial to start a call.</p></div>
+    <div class="chips" id="chips"></div>
+    <div class="row">
+      <div><label for="text">Say</label><input id="text" placeholder="Type what the caller says" disabled></div>
+      <button id="send" disabled>Send</button>
+    </div>
+    <div class="meta">Status: <span class="status" id="status">idle</span></div>
+  </section>
+  <section>
+    <h2>Agent desktop · screen-pop</h2>
+    <div id="pop"><p class="empty">Shown when the bot hands the call over.</p></div>
+    <h2 style="margin-top:16px">Trace of the last turn</h2>
+    <pre id="trace">No turn yet.</pre>
+  </section>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+let call = null;
+const quick = ["yes", "my flight was cancelled", "ABC123", "Smith", "where is my bag?", "the first one", "no thanks", "agent"];
+
+function add(who, text, meta) {
+  const chat = $("chat");
+  if (chat.querySelector(".empty")) chat.innerHTML = "";
+  const div = document.createElement("div");
+  div.className = "msg " + who;
+  div.textContent = text;
+  if (meta) { const m = document.createElement("div"); m.className = "meta"; m.textContent = meta; div.appendChild(m); }
+  chat.appendChild(div);
+  chat.scrollTop = chat.scrollHeight;
+}
+
+function setLive(live) {
+  $("text").disabled = !live; $("send").disabled = !live;
+  document.querySelectorAll("#chips button").forEach(b => b.disabled = !live);
+}
+
+async function showTrace(traceId) {
+  if (!traceId) return;
+  const r = await fetch("/api/traces/" + traceId);
+  const t = await r.json();
+  $("trace").textContent = t.tree || "(no spans recorded: is ZINGLY_TRACE_FILE set?)";
+}
+
+function showPop(c) {
+  const h = c.screen_pop;
+  const el = $("pop");
+  if (!h) {
+    el.innerHTML = `<div class="pop"><dl><dt>Routed to</dt><dd>${c.queue || "-"} (${c.reason || ""})</dd>
+      <dt>Disposition</dt><dd>${c.disposition || "-"} · estimated wait ${c.estimated_wait_s ?? "-"} s</dd></dl></div>`;
+    return;
+  }
+  const actions = (h.attempted_actions || []).map(a => `${a.action} ${Object.values(a.args || {}).join(" ")} → ${a.result}${a.detail ? " (" + a.detail + ")" : ""}`);
+  el.innerHTML = `<div class="pop"><dl>
+    <dt>Queue</dt><dd>${h.routing.queue} · priority ${h.routing.priority} · ${c.disposition} (wait ${c.estimated_wait_s} s)</dd>
+    <dt>Category</dt><dd>${h.routing.category} / ${h.routing.subcategory}</dd>
+    <dt>Caller</dt><dd>${h.caller.number_masked} · ${h.caller.identity_level}${h.caller.verified_by ? " (" + h.caller.verified_by + ")" : ""}</dd>
+    <dt>Booking</dt><dd>${h.booking ? h.booking.ref_masked + " on " + h.booking.flight : "-"}</dd>
+    <dt>Summary</dt><dd>${h.summary}</dd>
+    <dt>Attempted actions</dt><dd>${actions.join("<br>") || "-"}</dd>
+    <dt>Context ref (Data Action)</dt><dd>${h.context_ref}</dd></dl></div>`;
+}
+
+$("dial").onclick = async () => {
+  $("chat").innerHTML = ""; $("pop").innerHTML = '<p class="empty">Shown when the bot hands the call over.</p>';
+  const r = await fetch("/api/calls", { method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ dialed: $("dialed").value, caller: $("caller").value }) });
+  call = await r.json();
+  $("status").textContent = call.status + (call.reason ? " · " + call.reason : "");
+  if (call.status === "IN_BOT") { add("bot", call.transcript[0].text, "welcome · pre-rendered audio"); setLive(true); }
+  else { add("bot", "Genesys routed this call to " + call.routed_to + "."); showPop(call); setLive(false); }
+  showTrace(call.trace_id);
+};
+
+async function send(text) {
+  if (!call || !text) return;
+  add("caller", text);
+  $("text").value = "";
+  const r = await fetch(`/api/calls/${call.call_id}/say`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text }) });
+  const { call: c, turn } = await r.json();
+  add("bot", turn.reply.text, `${turn.turn_path}${turn.agent ? " → " + turn.agent : ""} · ${turn.identity_level} · ${turn.latency_ms} ms`);
+  $("status").textContent = c.status;
+  showTrace(turn.genesys_trace_id);
+  if (c.status !== "IN_BOT") { setLive(false); }
+  if (c.status === "AGENT_HANDOVER") { const full = await (await fetch(`/api/calls/${c.call_id}`)).json(); showPop(full); }
+}
+
+$("send").onclick = () => send($("text").value.trim());
+$("text").addEventListener("keydown", (e) => { if (e.key === "Enter") send($("text").value.trim()); });
+quick.forEach(q => { const b = document.createElement("button"); b.className = "secondary"; b.textContent = q; b.onclick = () => send(q); b.disabled = true; $("chips").appendChild(b); });
+</script>
+</body>
+</html>

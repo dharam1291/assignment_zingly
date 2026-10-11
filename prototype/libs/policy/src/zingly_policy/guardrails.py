@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Mapping, Protocol
 
-from zingly_core import IdentityLevel
+from zingly_core import IdentityLevel, tracing
 
 
 @dataclass(frozen=True)
@@ -31,6 +31,12 @@ class LevelGuard:
         return cls({tool: IdentityLevel.parse(level) for tool, level in raw.items()})
 
     def check(self, tool: str, level: IdentityLevel) -> GuardDecision:
+        with tracing.span("policy.guard", "policy", tool=tool, level=level.label) as sp:
+            decision = self._decide(tool, level)
+            sp.set(allowed=decision.allowed, reason=decision.reason or None)
+            return decision
+
+    def _decide(self, tool: str, level: IdentityLevel) -> GuardDecision:
         required = self.min_level.get(tool)
         if required is None:
             return GuardDecision(False, f"tool '{tool}' is not allow-listed for this tenant")

@@ -14,7 +14,9 @@ class McpConfig:
     booking_ttl_s: float = 600.0
     deferred_commit: bool = True
     prewarm_wait_s: float = 10.0
-    protection_enabled: bool = True  # demo switch: False sends every call straight to the PSS
+    protection_enabled: bool = True
+    verify_max_failures: int = 5       # per booking reference, across all callers and clients
+    verify_window_s: float = 900  # demo switch: False sends every call straight to the PSS
 
     @classmethod
     def from_config(cls, section: Mapping[str, Any]) -> "McpConfig":

@@ -1,6 +1,6 @@
-"""Supervisor and domain agents (design §2 step 6).
+"""Supervisor and domain agents (design section 2 step 6).
 
-This default implementation is the design's deterministic mode (§7): templates and slot
+This default implementation is the design's deterministic mode (section 7): templates and slot
 filling, no LLM. An LLM-backed agent implements the same :class:`DomainAgent` interface
 and goes through the AI gateway; nothing else changes.
 
