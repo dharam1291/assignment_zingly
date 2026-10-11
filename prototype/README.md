@@ -17,28 +17,28 @@ and slot filling behind the same interfaces an LLM version would use.
 ## Quick start
 
 ```bash
-cd prototype
-./start_up.sh --help                       # every command and option
+  cd prototype
+  ./start_up.sh --help                       # every command and option
 
-# 1. Start
-./start_up.sh                              # first run: Python venv + install + start all four servers
-./start_up.sh restart --clean-traces       # later: fresh servers and an empty trace file
+  # 1. Start
+  ./start_up.sh                              # first run: Python venv + install + start all four servers
+  ./start_up.sh restart --clean-traces       # later: fresh servers and an empty trace file
 
-# 2. Run the demonstration flows
-./start_up.sh flows                        # all 14 flows, PASS/FAIL summary
-                                           # same as: .venv/bin/python scripts/run_flow.py --all
-./start_up.sh flows --list                 # list the flows
-./start_up.sh flows happy_rebooking --trace   # one flow, with the trace of every turn
-./start_up.sh flows 07 08 09               # several flows, by number or name
+  # 2. Run the demonstration flows
+  ./start_up.sh flows                        # all 14 flows, PASS/FAIL summary
+                                             # same as: .venv/bin/python scripts/run_flow.py --all
+  ./start_up.sh flows --list                 # list the flows
+  ./start_up.sh flows happy_rebooking --trace   # one flow, with the trace of every turn
+  ./start_up.sh flows 07 08 09               # several flows, by number or name
 
-# 3. Explore
-.venv/bin/python -m genesys_sim --trace    # interactive call in the terminal
-open http://127.0.0.1:8090                 # or the softphone + agent desktop in a browser
-.venv/bin/python scripts/spike.py          # load spike: unprotected vs protected
+  # 3. Explore
+  .venv/bin/python -m genesys_sim --trace    # interactive call in the terminal
+  open http://127.0.0.1:8090                 # or the softphone + agent desktop in a browser
+  .venv/bin/python scripts/spike.py          # load spike: unprotected vs protected
 
-# 4. Stop
-./start_up.sh status
-./start_up.sh stop
+  # 4. Stop
+  ./start_up.sh status
+  ./start_up.sh stop
 ```
 
 `start_up.sh` needs only Python 3.11+ on the PATH and works with bash 3.2 (macOS) or later. It
