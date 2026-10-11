@@ -136,8 +136,9 @@ deterministic mode. [PRODUCTION_READINESS.md](PRODUCTION_READINESS.md) says how 
 ## Run everything
 
 ```bash
+./start_up.sh restart --clean-traces                 # fresh servers, empty trace file
 ./start_up.sh test                                   # automated tests
-.venv/bin/python scripts/run_flow.py --all           # 14 live flows, PASS/FAIL
-.venv/bin/python scripts/run_flow.py --all --record  # and regenerate docs/flows/
+./start_up.sh flows                                  # 14 live flows, PASS/FAIL (= scripts/run_flow.py --all)
+./start_up.sh flows --all --record                   # and regenerate docs/flows/
 .venv/bin/python scripts/spike.py                    # load comparison
 ```
