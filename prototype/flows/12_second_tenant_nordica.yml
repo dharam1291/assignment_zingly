@@ -1,0 +1,22 @@
+title: Same deployment, second tenant
+summary: >
+  The Nordica line resolves to the Nordica tenant: its own welcome, no consent prompt, its
+  own airports and reservation backend. Rebooking is canaried to 50% of Nordica calls, so
+  the second call either verifies or is handed over as not_in_rollout.
+demonstrates: [multi-tenancy from one config file, per-tenant rollout, tenant isolation]
+setup:
+  - reset: true
+calls:
+  - dialed: "+4780001234"
+    caller: "+4791000001"
+    expect_welcome_contains: "Welcome to Nordica Air"
+    steps:
+      - say: "what is the status of NR456"
+        expect: {contains: "NR456 to Copenhagen is cancelled"}
+      - say: "no thanks"
+        expect: {status: COMPLETED}
+  - dialed: "+4780001234"
+    caller: "+15550000301"
+    steps:
+      - say: "my booking NRD789 was cancelled"
+        expect: {contains_any: ["surname", "colleague"]}

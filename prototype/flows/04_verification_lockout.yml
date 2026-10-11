@@ -1,0 +1,23 @@
+title: Three failed verifications lock self-service
+summary: >
+  Wrong details three times locks self-service for the caller's number. Failures never say
+  whether the reference exists. The caller is handed over as not verified.
+demonstrates: [fraud controls, lockout, no existence leak, handover with identity level]
+setup:
+  - reset: true
+calls:
+  - dialed: "+448000001234"
+    caller: "+15550000003"
+    steps:
+      - say: "yes"
+      - say: "I need to rebook my cancelled flight"
+        expect: {contains: "booking reference"}
+      - say: "ZZZ999"
+      - say: "Jones"
+        expect: {contains: "couldn't verify"}
+      - say: "ABC123"
+      - say: "Jones"
+        expect: {contains: "couldn't verify"}
+      - say: "ABC123"
+      - say: "Brown"
+        expect: {status: AGENT_HANDOVER, handover: {subcategory: verification_failed, identity: unknown}}

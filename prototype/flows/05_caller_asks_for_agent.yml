@@ -1,0 +1,19 @@
+title: Caller asks for a person mid-task
+summary: >
+  Asking for an agent is honoured at any point (fast path, no model). The handover carries
+  who the caller is, how they were verified and what was already done.
+demonstrates: [fast path agent request, AGENT_HANDOVER payload, screen-pop, masked attributes]
+setup:
+  - reset: true
+  - prewarm: {tenant: atlantica, flight: AT123}
+calls:
+  - dialed: "+448000001234"
+    caller: "+15550000004"
+    steps:
+      - say: "yes"
+      - say: "my booking ABC123 was cancelled"
+      - say: "Smith"
+        expect: {identity: verified}
+      - say: "can I speak to a real person"
+        expect: {status: AGENT_HANDOVER, handover: {subcategory: caller_requested_agent, identity: verified,
+                                                    queue: Disruption_Rebooking}}

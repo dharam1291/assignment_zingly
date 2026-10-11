@@ -1,0 +1,19 @@
+title: Flight status for an unknown caller, from the saved copy
+summary: >
+  Flight status is public, so no identity check is asked. The answer comes from the saved
+  copy pre-warmed by the disruption event: zero reservation-system requests, labelled "as of".
+demonstrates: [verify on demand (not needed), saved copy, P3 lane not used, as-of wording]
+setup:
+  - reset: true
+  - prewarm: {tenant: atlantica, flight: AT123}
+calls:
+  - dialed: "+448000001234"
+    caller: "+15550000001"
+    steps:
+      - say: "yes"
+      - say: "what's the status of AT123?"
+        expect: {agent: flight_status, identity: unknown, contains: ["cancelled", "as of"]}
+      - say: "no thanks"
+        expect: {status: COMPLETED}
+checks:
+  - pss_requests_since_setup: {airline: atlantica, max: 0}

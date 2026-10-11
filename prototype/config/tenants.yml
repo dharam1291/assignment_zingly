@@ -1,0 +1,153 @@
+# One deployment, many tenants.
+#
+#   platform:              deployment-wide settings shared by every service
+#   defaults.<module>:     applies to every tenant
+#   tenants.<id>:          dialed_numbers route a call to the tenant
+#   tenants.<id>.<module>: overrides for that tenant only (deep-merged over defaults)
+#
+# Voice Agent modules, one section each: gateway, channel, ai_router, agents, auth,
+# handover, mcp_client (voice agent process) and policy, saved_copy, mcp (MCP server
+# process). Each module receives only its own merged section.
+
+platform:
+  pss_url: http://127.0.0.1:9001            # southbound: airline reservation system
+  mcp_server_url: http://127.0.0.1:8100     # Zingly MCP server, tenant endpoint = {url}/{tenant}/mcp
+  voice_agent_url: http://127.0.0.1:8080    # Zingly voice agent gateway
+  genesys_url: http://127.0.0.1:8090        # northbound: Genesys simulator
+  trace_file: .run/traces.jsonl             # local trace collector (relative to prototype/)
+
+# ------------------------------------------------------------------ defaults
+defaults:
+  gateway:
+    max_concurrent_sessions: 500
+    session_idle_timeout_s: 1800            # idle conversations are dropped after this
+    webhook_secret_env: ""                  # env var holding the disruption-webhook HMAC secret
+
+  channel:
+    max_input_chars: 500
+    dtmf_enabled: true
+
+  ai_router:
+    welcome:
+      consent_required: true
+      consent_prompt: "I'm an AI assistant and this call may be recorded. Is that OK?"
+      after_consent: "Thanks. How can I help with your flight today?"
+      consent_declined: "No problem. I'll connect you to a colleague."
+      audio_version: v1
+    fast_path:
+      greeting_reply: "How can I help with your flight today?"
+    disambiguation:
+      min_confidence: 0.6
+      switch_confidence: 0.75
+      max_clarify: 2
+    intents:
+      rebooking: [cancelled, canceled, cancel, rebook, re-book, change my flight, new flight,
+                  another flight, alternative, alternatives, options, missed, disrupted, move me]
+      flight_status: [status, delayed, delay, on time, departure time, what time, is my flight]
+      faq: [baggage, bag, bags, luggage, hotel, voucher, compensation, refund policy, meal]
+    routing:
+      enabled_agents: [rebooking, flight_status, faq]
+      rollout_percent: {rebooking: 100, flight_status: 100, faq: 100}
+
+  agents:
+    max_options: 2
+
+  auth:
+    max_attempts: 3
+    lockout_minutes: 60
+    use_caller_id_hint: true
+    token_ttl_s: 900
+    signing_key_env: ""                     # default ZINGLY_IDENTITY_KEY_<TENANT>; dev key if unset
+
+  handover:
+    default_queue: General_Support
+    callback_eligible: true
+    context_ttl_hours: 24
+    queues: {rebooking: Disruption_Rebooking, flight_status: Flight_Info, faq: General_Support,
+             general: General_Support}
+    priority: {rebooking: 10}
+
+  mcp_client:
+    timeout_s: 10
+
+  # ---- MCP server process -------------------------------------------------
+  policy:
+    # Allow-list: a tool runs only at or above this identity level. Unlisted tools are denied.
+    tool_min_level:
+      get_flight_status: unknown
+      get_alternatives: unknown
+      lookup_caller_id: unknown           # returns a masked summary only
+      verify_booking: unknown             # returns booking data only on a match
+      get_booking: verified               # and only the booking named in the identity token
+      rebook: verified                    # same booking-scope check
+    lanes:
+      # The PSS hard limit is 5 req/s; the parent sits a little below it.
+      parent_rps: 4.0
+      parent_burst: 1.0
+      borrow: true
+      shares: {P0: 0.40, P1: 0.30, P2: 0.20, P3: 0.10}
+      wait_s: {P0: 3.0, P1: 1.5, P2: 0.5, P3: 0.0}
+    breaker:
+      failure_threshold: 5
+      open_seconds: 10
+
+  saved_copy:
+    default_ttl_s: 25
+    keep_stale_s: 3600
+
+  mcp:
+    pss_base_url: http://127.0.0.1:9001
+    timeout_s: 2.0
+    status_ttl_s: 60
+    alternatives_ttl_s: 25
+    booking_ttl_s: 600
+    deferred_commit: true
+    prewarm_wait_s: 10
+    protection_enabled: true
+    verify_max_failures: 5                  # per booking reference, whoever asks (MCP is reachable by any client)
+    verify_window_s: 900
+
+# ------------------------------------------------------------------ tenants
+tenants:
+  atlantica:
+    display_name: Atlantica Airways
+    dialed_numbers: ["+448000001234"]
+    ai_router:
+      welcome:
+        text: Welcome to Atlantica Airways.
+    agents:
+      airports: {LHR: London Heathrow, BOS: Boston, JFK: New York JFK}
+      faq:
+        - keywords: [bag, bags, baggage, luggage]
+          answer: If we've rebooked you, your checked bags are moved to the new flight automatically.
+        - keywords: [hotel, voucher, meal]
+          answer: If your new flight is tomorrow, you're entitled to a hotel and meal vouchers. We'll text you the details.
+    mcp:
+      airline_code: atlantica
+
+  # Same deployment, second airline: different welcome, no consent prompt, a P0-heavy lane
+  # split, rebooking canaried to 50% of calls, no deferred commits, its own queues.
+  nordica:
+    display_name: Nordica Air
+    dialed_numbers: ["+4780001234"]
+    ai_router:
+      welcome:
+        text: Welcome to Nordica Air.
+        consent_required: false
+      routing:
+        rollout_percent: {rebooking: 50}
+    agents:
+      airports: {OSL: Oslo, CPH: Copenhagen}
+      faq:
+        - keywords: [bag, baggage, luggage]
+          answer: Your bags follow you to the new flight.
+    auth:
+      max_attempts: 2
+    policy:
+      lanes:
+        shares: {P0: 0.50, P1: 0.30, P2: 0.10, P3: 0.10}
+    mcp:
+      airline_code: nordica
+      deferred_commit: false
+    handover:
+      queues: {rebooking: NR_Disruption, general: NR_General}

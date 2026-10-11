@@ -1,0 +1,17 @@
+# Northbound simulator: what Genesys Cloud owns in the design.
+voice_agent_url: http://127.0.0.1:8080     # Zingly gateway (create conversation, capacity check)
+callback_after_s: 120                       # offer a callback when the estimated wait is longer
+fallback_queue: General_Support             # where calls go when the bot path is not available
+
+# Inbound flows, one per dialed number. bot_percent is the A/B split legacy IVR vs Zingly.
+inbound_flows:
+  "+448000001234": {name: Atlantica disruption line, bot_percent: 100}
+  "+4780001234":   {name: Nordica customer line, bot_percent: 100}
+
+# Simulated estimated wait per queue, in seconds.
+queues:
+  Disruption_Rebooking: 300
+  Flight_Info: 40
+  General_Support: 60
+  NR_Disruption: 30
+  NR_General: 90

@@ -1,0 +1,28 @@
+title: Reservation system brownout, answered from the saved copy
+summary: >
+  After the disruption was pre-warmed the PSS becomes too slow (beyond the 2 s timeout).
+  Verification and options are served from the saved copy and labelled "as of". The commit
+  times out and the read-back times out too, so the outcome is unknown: the bot does not
+  claim either way, hands over, and queues a reconciliation under the same idempotency key.
+  When the PSS recovers the reconciliation confirms the booking exactly once.
+demonstrates: ["degraded mode - brownout", saved copy fallback, read-before-retry, idempotent reconciliation, handover]
+setup:
+  - reset: true
+  - prewarm: {tenant: atlantica, flight: AT123}
+  - pss_mode: {airline: atlantica, extra_latency_ms: 2500}
+calls:
+  - dialed: "+448000001234"
+    caller: "+15550000007"
+    steps:
+      - say: "yes"
+      - say: "my booking ABC123 was cancelled"
+      - say: "Smith"
+        expect: {identity: verified, contains: "14:05"}
+      - say: "second"
+      - say: "yes"
+        expect: {status: AGENT_HANDOVER, handover: {subcategory: rebook_unconfirmed}}
+      - do: {pss_mode: {airline: atlantica, extra_latency_ms: 0}}
+      - wait: 8
+checks:
+  - deferred: {tenant: atlantica, confirmed: 1}
+  - pss_booking: {airline: atlantica, ref: ABC123, flight: AT131}

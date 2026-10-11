@@ -1,0 +1,16 @@
+title: Zingly at capacity, the next call overflows to a person
+summary: >
+  The tenant's concurrent-session ceiling is set to 1. The first call stays in the bot; the
+  second is refused by the capacity check and Genesys queues it for a human with a callback.
+demonstrates: [capacity check, overflow to human queue, no busy tone]
+setup:
+  - reset: true
+  - max_sessions: {tenant: atlantica, max: 1}
+calls:
+  - dialed: "+448000001234"
+    caller: "+15550000201"
+    steps: [{say: "yes"}]
+  - dialed: "+448000001234"
+    caller: "+15550000202"
+    expect_routed: human_queue
+    expect_reason_contains: at_capacity
