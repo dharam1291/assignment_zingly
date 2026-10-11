@@ -17,14 +17,14 @@ and slot filling behind the same interfaces an LLM version would use.
 ## Quick start
 
 ```bash
-cd prototype
-./start_up.sh                        # Python venv + install + start all four servers
-.venv/bin/python scripts/run_flow.py --list
-.venv/bin/python scripts/run_flow.py happy_rebooking --trace
-.venv/bin/python -m genesys_sim --trace         # interactive call in the terminal
-open http://127.0.0.1:8090                      # or the softphone + agent desktop in a browser
-.venv/bin/python scripts/spike.py              # load spike: unprotected vs protected
-./start_up.sh stop
+  cd prototype
+  ./start_up.sh                        # Python venv + install + start all four servers
+  .venv/bin/python scripts/run_flow.py --list
+  .venv/bin/python scripts/run_flow.py happy_rebooking --trace
+  .venv/bin/python -m genesys_sim --trace         # interactive call in the terminal
+  open http://127.0.0.1:8090                      # or the softphone + agent desktop in a browser
+  .venv/bin/python scripts/spike.py              # load spike: unprotected vs protected
+  ./start_up.sh stop
 ```
 
 `start_up.sh` needs only Python 3.11+ on the PATH. It creates `.venv`, installs the 13 packages
