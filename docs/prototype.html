@@ -1,0 +1,537 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zingly Voice Prototype</title>
+<meta name="description" content="Prototype of the Atlantica disruption voice agent: Genesys simulator, Zingly voice agent, a real MCP server and a rate-limited airline reservation system, with runnable flows, traces and a load spike.">
+<style>
+:root {
+  --bg: #F5F7FB; --paper: #FFFFFF; --ink: #0B1B33; --ink-2: #334155; --sub: #64748B; --line: #E2E8F0; --line-2: #CBD5E1;
+  --accent: #4F46E5; --accent-ink: #3730A3; --accent-soft: #EEF2FF;
+  --green: #047857; --green-soft: #ECFDF5; --amber: #B45309; --amber-soft: #FFFBEB; --red: #B91C1C; --red-soft: #FEF2F2;
+  --code: #F1F5F9; --hero-1: #0B1B33; --hero-2: #1E1B4B; --shadow: 0 1px 2px rgba(15,23,42,.05), 0 4px 16px rgba(15,23,42,.05);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0A0F1C; --paper: #111827; --ink: #E5E7EB; --ink-2: #CBD5E1; --sub: #94A3B8; --line: #1F2937; --line-2: #334155;
+    --accent: #A5B4FC; --accent-ink: #C7D2FE; --accent-soft: #1E1B4B;
+    --green: #6EE7B7; --green-soft: #052E22; --amber: #FCD34D; --amber-soft: #2B1D05; --red: #FCA5A5; --red-soft: #2A0E0E;
+    --code: #0B1220; --hero-1: #060A14; --hero-2: #151238; --shadow: none;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0A0F1C; --paper: #111827; --ink: #E5E7EB; --ink-2: #CBD5E1; --sub: #94A3B8; --line: #1F2937; --line-2: #334155;
+  --accent: #A5B4FC; --accent-ink: #C7D2FE; --accent-soft: #1E1B4B;
+  --green: #6EE7B7; --green-soft: #052E22; --amber: #FCD34D; --amber-soft: #2B1D05; --red: #FCA5A5; --red-soft: #2A0E0E;
+  --code: #0B1220; --hero-1: #060A14; --hero-2: #151238; --shadow: none;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 72px; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+  font: 16px/1.65 Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased; }
+a { color: var(--accent); text-underline-offset: 2px; }
+code { font: 0.86em/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: var(--code); padding: 1px 5px; border-radius: 4px; }
+pre { background: var(--code); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; overflow-x: auto; font-size: 13px; line-height: 1.55; }
+pre code { background: none; padding: 0; font-size: inherit; }
+strong { font-weight: 650; }
+
+/* ---------- top bar ---------- */
+.topbar { position: sticky; top: 0; z-index: 20; background: color-mix(in srgb, var(--paper) 88%, transparent);
+  backdrop-filter: saturate(1.4) blur(10px); border-bottom: 1px solid var(--line); }
+.topbar-in { max-width: 1320px; margin: 0 auto; padding: 0 24px; height: 56px; display: flex; align-items: center; gap: 16px; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; color: var(--ink); text-decoration: none; font-size: 15px; white-space: nowrap; }
+.brand-mark { width: 26px; height: 26px; border-radius: 7px; background: linear-gradient(135deg, #6366F1, #4338CA); display: grid; place-items: center; color: #fff; font-size: 13px; }
+.brand small { color: var(--sub); font-weight: 500; }
+.topbar .spacer { flex: 1; }
+.topbar .meta { color: var(--sub); font-size: 13px; white-space: nowrap; }
+.theme-btn { border: 1px solid var(--line-2); background: var(--paper); color: var(--ink-2); border-radius: 8px; height: 32px; padding: 0 10px; cursor: pointer; font: inherit; font-size: 13px; }
+.progress { position: absolute; left: 0; bottom: -1px; height: 2px; background: var(--accent); width: 0; }
+
+/* ---------- hero ---------- */
+.hero { background: radial-gradient(1200px 400px at 80% -10%, rgba(99,102,241,.45), transparent 60%), linear-gradient(160deg, var(--hero-1), var(--hero-2)); color: #F8FAFC; }
+.hero-in { max-width: 1320px; margin: 0 auto; padding: 64px 24px 56px; }
+.eyebrow { display: inline-flex; gap: 8px; align-items: center; font-size: 12.5px; letter-spacing: .08em; text-transform: uppercase; font-weight: 650;
+  color: #C7D2FE; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14); padding: 5px 12px; border-radius: 999px; }
+.hero h1 { font-size: clamp(30px, 4.4vw, 50px); line-height: 1.1; letter-spacing: -.02em; margin: 18px 0 14px; max-width: 900px; font-weight: 750; }
+.hero h1 em { font-style: normal; background: linear-gradient(90deg, #A5B4FC, #67E8F9); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.hero .lede { font-size: clamp(16px, 1.6vw, 19px); color: #CBD5E1; max-width: 820px; margin: 0; }
+.hero-meta { display: flex; flex-wrap: wrap; gap: 8px 22px; margin-top: 22px; color: #94A3B8; font-size: 14px; }
+.hero-meta b { color: #E2E8F0; font-weight: 600; }
+.kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-top: 40px; }
+.kpi { background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12); border-radius: 14px; padding: 16px 18px; }
+.kpi .v { font-size: 28px; font-weight: 750; letter-spacing: -.02em; color: #fff; line-height: 1.15; }
+.kpi .l { font-size: 13px; color: #CBD5E1; margin-top: 4px; line-height: 1.4; }
+.kpi .t { display: inline-block; font-size: 11px; color: #A5B4FC; text-transform: uppercase; letter-spacing: .06em; margin-top: 8px; font-weight: 650; }
+
+/* ---------- layout ---------- */
+.layout { max-width: 1320px; margin: 0 auto; padding: 40px 24px 80px; display: grid; grid-template-columns: 236px minmax(0, 1fr); gap: 48px; }
+nav.toc { position: sticky; top: 80px; align-self: start; max-height: calc(100vh - 100px); overflow: auto; font-size: 13.5px; padding-right: 4px; }
+nav.toc .h { font-size: 11.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--sub); font-weight: 700; margin: 0 0 8px 10px; }
+nav.toc ol { list-style: none; margin: 0 0 18px; padding: 0; counter-reset: toc; }
+nav.toc a { display: flex; gap: 8px; padding: 5px 10px; border-radius: 7px; color: var(--ink-2); text-decoration: none; border-left: 2px solid transparent; }
+nav.toc a .n { color: var(--sub); font-variant-numeric: tabular-nums; min-width: 18px; }
+nav.toc a:hover { background: var(--accent-soft); color: var(--ink); }
+nav.toc a.active { background: var(--accent-soft); color: var(--accent-ink); border-left-color: var(--accent); font-weight: 600; }
+main { min-width: 0; }
+
+/* ---------- sections ---------- */
+section.s { background: var(--paper); border: 1px solid var(--line); border-radius: 18px; padding: 40px 44px; margin-bottom: 28px; box-shadow: var(--shadow); }
+.s-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 6px; flex-wrap: wrap; }
+.s-num { font-size: 13px; font-weight: 700; color: var(--accent); background: var(--accent-soft); border-radius: 7px; padding: 2px 9px; font-variant-numeric: tabular-nums; }
+section.s h2 { font-size: 26px; line-height: 1.25; letter-spacing: -.015em; margin: 0; font-weight: 720; }
+.aud { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; }
+.tag { font-size: 11.5px; font-weight: 650; border-radius: 999px; padding: 2px 10px; border: 1px solid var(--line-2); color: var(--sub); white-space: nowrap; }
+.tag.biz { color: var(--green); border-color: color-mix(in srgb, var(--green) 40%, transparent); background: var(--green-soft); }
+.tag.it { color: var(--accent-ink); border-color: color-mix(in srgb, var(--accent) 40%, transparent); background: var(--accent-soft); }
+.tag.sec { color: var(--red); border-color: color-mix(in srgb, var(--red) 35%, transparent); background: var(--red-soft); }
+.oneline { font-size: 18px; line-height: 1.55; color: var(--ink-2); margin: 10px 0 24px; max-width: 860px; }
+.oneline b { color: var(--ink); }
+h3 { font-size: 18px; margin: 32px 0 10px; letter-spacing: -.01em; }
+h4 { font-size: 15px; margin: 22px 0 8px; }
+p { margin: 10px 0; }
+.muted { color: var(--sub); }
+.small { font-size: 14px; }
+
+/* ---------- tables ---------- */
+.tbl { overflow-x: auto; margin: 14px 0 20px; border: 1px solid var(--line); border-radius: 12px; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; line-height: 1.5; }
+th, td { text-align: left; vertical-align: top; padding: 11px 14px; border-bottom: 1px solid var(--line); }
+tr:last-child td { border-bottom: 0; }
+th { background: var(--bg); font-weight: 650; font-size: 12.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--sub); white-space: nowrap; }
+td:first-child { font-weight: 600; color: var(--ink); }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+tr.total td { background: var(--accent-soft); font-weight: 700; }
+.quote { font-style: italic; color: var(--ink-2); }
+
+/* ---------- cards ---------- */
+.grid { display: grid; gap: 16px; }
+.g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.g4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.card { border: 1px solid var(--line); border-radius: 14px; padding: 20px 22px; background: var(--paper); }
+.card h4 { margin: 0 0 6px; font-size: 16px; }
+.card p { margin: 6px 0 0; color: var(--ink-2); font-size: 14.5px; }
+.card .k { font-size: 11.5px; text-transform: uppercase; letter-spacing: .07em; font-weight: 700; color: var(--sub); }
+.card.problem { border-top: 4px solid var(--red); }
+.card.proposal { border-top: 4px solid var(--accent); }
+.card.outcome { border-top: 4px solid var(--green); }
+.card ul { margin: 8px 0 0; padding-left: 18px; color: var(--ink-2); font-size: 14.5px; }
+.card li { margin: 4px 0; }
+
+.persona { display: flex; flex-direction: column; gap: 8px; text-decoration: none; color: inherit; transition: border-color .15s, transform .15s; }
+.persona:hover { border-color: var(--accent); transform: translateY(-1px); }
+.persona .who { font-weight: 700; font-size: 16px; color: var(--ink); }
+.persona .why { font-size: 14px; color: var(--sub); }
+.persona .path { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.persona .path span { font-size: 12.5px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px; color: var(--ink-2); }
+
+
+.callout { border-left: 4px solid var(--accent); background: var(--accent-soft); border-radius: 0 12px 12px 0; padding: 14px 18px; margin: 18px 0; color: var(--ink-2); }
+.callout.green { border-color: var(--green); background: var(--green-soft); }
+.callout.amber { border-color: var(--amber); background: var(--amber-soft); }
+.callout b { color: var(--ink); }
+
+.needs { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.needs li { display: flex; gap: 10px; align-items: flex-start; font-size: 15px; padding: 12px 14px; border: 1px dashed var(--line-2); border-radius: 10px; }
+.needs li::before { content: "→"; color: var(--accent); font-weight: 700; }
+
+/* ---------- figures ---------- */
+figure { margin: 22px 0 18px; }
+.fig { background: #fff; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+.fig svg { display: block; width: 100%; height: auto; }
+.fig svg > rect:first-of-type { stroke: none; }
+figcaption { display: flex; justify-content: space-between; gap: 12px; color: var(--sub); font-size: 13.5px; margin-top: 8px; }
+figcaption a { white-space: nowrap; font-size: 13px; }
+
+/* ---------- journey ---------- */
+.journey { position: relative; margin: 18px 0 8px; padding-left: 0; list-style: none; }
+.journey li { display: grid; grid-template-columns: 74px minmax(0, 1fr) minmax(0, 1fr); gap: 18px; padding: 16px 0; border-bottom: 1px solid var(--line); }
+.journey li:last-child { border-bottom: 0; }
+.journey .t { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--accent); background: var(--accent-soft); border-radius: 8px; height: 30px; display: grid; place-items: center; font-size: 14px; }
+.journey .hear { font-size: 15.5px; color: var(--ink); }
+.journey .hear::before { content: "Caller hears"; display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--sub); font-weight: 700; margin-bottom: 2px; }
+.journey .under { font-size: 14px; color: var(--ink-2); }
+.journey .under::before { content: "Underneath"; display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--sub); font-weight: 700; margin-bottom: 2px; }
+.journey-head { display: grid; grid-template-columns: 74px 1fr 1fr; gap: 18px; }
+
+/* ---------- assurance ladder ---------- */
+.ladder { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; align-items: stretch; margin: 18px 0; }
+.rung { border: 1px solid var(--line); border-radius: 14px; padding: 16px; background: var(--paper); position: relative; }
+.rung .lv { font-size: 22px; font-weight: 800; letter-spacing: -.02em; }
+.rung .nm { font-weight: 650; font-size: 14px; color: var(--ink-2); }
+.rung .how, .rung .gets { font-size: 13.5px; color: var(--ink-2); margin-top: 10px; }
+.rung .how b, .rung .gets b { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--sub); margin-bottom: 2px; }
+.rung.l0 .lv { color: var(--sub); } .rung.l1 .lv { color: var(--amber); } .rung.l2 .lv { color: var(--accent); } .rung.l3 .lv { color: var(--green); }
+.rung .flag { display: inline-block; margin-bottom: 6px; font-size: 11px; font-weight: 700; color: var(--accent); background: var(--accent-soft); padding: 2px 8px; border-radius: 999px; }
+
+/* ---------- layers ---------- */
+.layers { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; margin: 18px 0; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+.layer { padding: 18px; border-right: 1px solid var(--line); background: var(--paper); }
+.layer:last-child { border-right: 0; }
+.layer .ix { font-size: 12px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: .07em; }
+.layer h4 { margin: 4px 0 6px; font-size: 16px; }
+.layer p { margin: 0; font-size: 14px; color: var(--ink-2); }
+.layer .stat { margin-top: 10px; font-size: 13px; font-weight: 650; color: var(--green); }
+
+.math { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 16px 0; }
+.math .m { border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+.math .m .v { font-size: 26px; font-weight: 780; letter-spacing: -.02em; }
+.math .m .l { font-size: 13.5px; color: var(--ink-2); }
+.math .m.bad .v { color: var(--red); } .math .m.good .v { color: var(--green); } .math .m.cap .v { color: var(--accent); }
+
+/* ---------- screen-pop mock ---------- */
+.pop { border: 1px solid var(--line-2); border-radius: 14px; overflow: hidden; background: var(--paper); box-shadow: var(--shadow); margin: 18px 0; }
+.pop-bar { display: flex; align-items: center; gap: 10px; padding: 10px 16px; background: #1F2937; color: #F9FAFB; font-size: 13px; }
+.pop-bar .dot { width: 9px; height: 9px; border-radius: 50%; background: #22C55E; box-shadow: 0 0 0 3px rgba(34,197,94,.25); }
+.pop-bar .q { margin-left: auto; color: #9CA3AF; }
+.pop-body { display: grid; grid-template-columns: 300px minmax(0, 1fr); }
+.pop-side { padding: 18px; border-right: 1px solid var(--line); background: var(--bg); }
+.pop-main { padding: 18px 20px; }
+.pop .lbl { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--sub); font-weight: 700; margin-top: 14px; }
+.pop .lbl:first-child { margin-top: 0; }
+.pop .val { font-size: 14.5px; color: var(--ink); }
+.chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 999px; }
+.chip.ok { background: var(--green-soft); color: var(--green); }
+.chip.warn { background: var(--amber-soft); color: var(--amber); }
+.chip.bad { background: var(--red-soft); color: var(--red); }
+.chip.info { background: var(--accent-soft); color: var(--accent-ink); }
+.attempts { list-style: none; margin: 6px 0 0; padding: 0; }
+.attempts li { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; border-bottom: 1px dashed var(--line); font-size: 14px; }
+.attempts li:last-child { border-bottom: 0; }
+.attempts .ic { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 800; flex: none; margin-top: 1px; }
+.attempts .ic.ok { background: var(--green-soft); color: var(--green); }
+.attempts .ic.bad { background: var(--red-soft); color: var(--red); }
+.next { margin-top: 14px; padding: 12px 14px; border-radius: 10px; background: var(--accent-soft); color: var(--ink); font-size: 14px; }
+
+/* ---------- failure cards ---------- */
+.fails { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin: 18px 0; }
+.fail { border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 8px; }
+.fail .hd { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+.fail h4 { margin: 0; font-size: 16px; }
+.fail .det { font-size: 12.5px; color: var(--sub); }
+.fail .does { font-size: 14px; color: var(--ink-2); }
+.fail .hears { font-size: 14.5px; font-style: italic; color: var(--ink); background: var(--bg); border-radius: 10px; padding: 10px 12px; border-left: 3px solid var(--green); }
+.fail.crit .hears { border-left-color: var(--amber); }
+
+/* ---------- phases ---------- */
+.phases { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin: 18px 0; }
+.phase { border: 1px solid var(--line); border-radius: 14px; padding: 20px; position: relative; }
+.phase .when { font-size: 12px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: .07em; }
+.phase h4 { margin: 4px 0 10px; font-size: 18px; }
+.phase ul { margin: 0; padding-left: 18px; font-size: 14px; color: var(--ink-2); }
+.phase li { margin: 4px 0; }
+.phase .exit { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--line-2); font-size: 13.5px; color: var(--ink-2); }
+.phase .exit b { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--green); margin-bottom: 4px; }
+.phase.poc { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+
+.pill { display: inline-block; font-size: 12px; font-weight: 700; padding: 2px 9px; border-radius: 999px; white-space: nowrap; }
+.pill.yes { background: var(--green-soft); color: var(--green); }
+.pill.no { background: var(--bg); color: var(--sub); border: 1px solid var(--line); }
+.pill.oos { background: var(--accent-soft); color: var(--accent-ink); }
+
+details { border: 1px solid var(--line); border-radius: 12px; margin: 14px 0; background: var(--paper); }
+details > summary { cursor: pointer; padding: 12px 16px; font-weight: 650; list-style: none; display: flex; align-items: center; gap: 10px; }
+details > summary::-webkit-details-marker { display: none; }
+details > summary::before { content: "+"; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; background: var(--accent-soft); color: var(--accent-ink); font-weight: 800; }
+details[open] > summary::before { content: "−"; }
+details > .in { padding: 0 16px 14px; }
+details pre { margin: 0; }
+
+.qs { counter-reset: q; list-style: none; padding: 0; margin: 14px 0; display: grid; gap: 10px; }
+.qs li { display: grid; grid-template-columns: 44px 170px minmax(0, 1fr); gap: 12px; align-items: baseline; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; font-size: 14.5px; }
+.qs .qn { font-weight: 750; color: var(--accent); font-variant-numeric: tabular-nums; }
+.qs .ow { font-size: 12.5px; font-weight: 650; color: var(--sub); }
+
+footer { max-width: 1320px; margin: 0 auto; padding: 0 24px 48px; color: var(--sub); font-size: 13px; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+
+/* ---------- responsive ---------- */
+@media (max-width: 1100px) {
+  .kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .g4, .layers, .ladder { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .layer { border-bottom: 1px solid var(--line); }
+  .rung { min-height: 0 !important; }
+}
+@media (max-width: 960px) {
+  .layout { grid-template-columns: 1fr; gap: 0; padding: 24px 16px 60px; }
+  nav.toc { display: none; }
+  section.s { padding: 26px 20px; border-radius: 14px; }
+  .g3, .phases, .math { grid-template-columns: 1fr; }
+  .pop-body { grid-template-columns: 1fr; }
+  .pop-side { border-right: 0; border-bottom: 1px solid var(--line); }
+  .topbar .meta { display: none; }
+}
+@media (max-width: 680px) {
+  .hero-in { padding: 40px 16px 36px; }
+  .topbar-in { padding: 0 16px; }
+  .kpis, .g2, .g4, .layers, .ladder, .fails, .needs { grid-template-columns: 1fr; }
+  .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .journey li, .journey-head { grid-template-columns: 1fr; gap: 6px; }
+  .journey .t { width: 64px; }
+  .qs li { grid-template-columns: 40px 1fr; }
+  .qs .ow { grid-column: 2; }
+  .qs .tx { grid-column: 1 / -1; }
+  .aud { margin-left: 0; }
+  .brand small { display: none; }
+}
+@media print {
+  .topbar, nav.toc, .theme-btn, figcaption a { display: none !important; }
+  body { background: #fff; font-size: 11px; }
+  .hero { background: #0B1B33 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .layout { display: block; padding: 0; }
+  section.s { box-shadow: none; border: 0; padding: 12px 0; break-inside: auto; }
+  figure, .card, .rung, .fail, .phase, tr { break-inside: avoid; }
+  details { border: 0; } details > .in { display: block; }
+}
+
+ol.steps{counter-reset:s;list-style:none;padding:0;margin:14px 0;display:grid;gap:8px}
+ol.steps li{display:grid;grid-template-columns:30px minmax(0,1fr);gap:12px;align-items:start;padding:10px 14px;border:1px solid var(--line);border-radius:12px;font-size:15px}
+ol.steps li::before{counter-increment:s;content:counter(s);width:26px;height:26px;border-radius:50%;background:var(--accent-soft);color:var(--accent-ink);display:grid;place-items:center;font-weight:750;font-size:13px}
+.fig img{display:block;width:100%;height:auto}
+.zoom{white-space:nowrap}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-in">
+    <a class="brand" href="#top"><span class="brand-mark">Z</span> Zingly Voice <small>· Prototype</small></a>
+    <span class="spacer"></span>
+    <span class="meta"><a href="index.html">← Solution design</a> · Prototype · Oct 2026</span>
+    <button class="theme-btn" id="themeBtn" type="button" aria-label="Toggle colour theme">◐ Theme</button>
+  </div>
+  <div class="progress" id="progress"></div>
+</header>
+
+<div class="hero" id="top">
+  <div class="hero-in">
+    <span class="eyebrow">Prototype · runnable slice of the solution design</span>
+    <h1>A disruption call, end to end, <em>running on your laptop</em>.</h1>
+    <p class="lede">Caller text goes in through a Genesys simulator, the Zingly voice agent identifies the caller and answers through a real MCP server, and the MCP server protects a mocked airline reservation system that refuses anything above 5 requests per second. Every handover produces the Genesys screen-pop payload. No LLM and no API key: the agents run in the design's deterministic mode.</p>
+    <div class="hero-meta">
+      <span><b>Start</b> <code>cd prototype &amp;&amp; ./start_up.sh</code></span>
+      <span><b>Needs</b> Python 3.11+</span>
+      <span><b>Source</b> <a href="https://github.com/dharam1291/assignment_zingly/tree/main/prototype" style="color:#C7D2FE">prototype/</a></span>
+    </div>
+    <div class="kpis">
+      <div class="kpi"><div class="v">4</div><div class="l">processes: Genesys, voice agent, MCP server, airline PSS</div><span class="t">Topology</span></div>
+      <div class="kpi"><div class="v">126 → 0</div><div class="l">reservation-system 429s in the same spike, protection off vs on</div><span class="t">Protection</span></div>
+      <div class="kpi"><div class="v">14</div><div class="l">runnable flows, each recorded with its distributed trace</div><span class="t">Demonstrable</span></div>
+      <div class="kpi"><div class="v">6</div><div class="l">MCP tools, usable from the voice agent, Codex or the Inspector</div><span class="t">Real MCP</span></div>
+      <div class="kpi"><div class="v">56</div><div class="l">automated tests, including architecture rules</div><span class="t">Quality</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="layout">
+  <nav class="toc" aria-label="Contents">
+    <div class="h">Overview</div>
+    <ol>
+      <li><a href="#start"><span class="n">1</span>Quick start</a></li>
+      <li><a href="#architecture"><span class="n">2</span>Architecture</a></li>
+      <li><a href="#modules"><span class="n">3</span>Modules</a></li>
+    </ol>
+    <div class="h">How it works</div>
+    <ol>
+      <li><a href="#turn"><span class="n">4</span>One caller turn</a></li>
+      <li><a href="#protection"><span class="n">5</span>Reservation protection</a></li>
+      <li><a href="#tenancy"><span class="n">6</span>Multi-tenancy</a></li>
+      <li><a href="#mcp"><span class="n">7</span>MCP server</a></li>
+    </ol>
+    <div class="h">Evidence</div>
+    <ol>
+      <li><a href="#flows"><span class="n">8</span>Demonstration flows</a></li>
+      <li><a href="#spike"><span class="n">9</span>Spike and gaps</a></li>
+      <li><a href="#tracing"><span class="n">10</span>Tracing</a></li>
+      <li><a href="#production"><span class="n">11</span>Tests &amp; production</a></li>
+    </ol>
+  </nav>
+
+  <main>
+<section class="s" id="start">
+  <div class="s-head"><span class="s-num">1</span><h2>Quick start</h2><div class="aud"><span class="tag it">IT architect</span><span class="tag ">Reviewer</span></div></div>
+  <p class="oneline">One script sets up Python, <b>frees busy ports gracefully</b>, and starts the four servers in dependency order.</p>
+<pre><code>cd prototype
+./start_up.sh                                        # venv + install + start all four servers
+.venv/bin/python scripts/run_flow.py --list          # the 14 demonstration flows
+.venv/bin/python scripts/run_flow.py happy_rebooking --trace
+.venv/bin/python -m genesys_sim --trace              # interactive call in the terminal
+open http://127.0.0.1:8090                           # softphone + agent desktop in a browser
+.venv/bin/python scripts/spike.py                    # load spike: unprotected vs protected
+./start_up.sh stop</code></pre>
+  <p class="small muted">Also <code>restart</code>, <code>status</code>, <code>test</code> and <code>logs &lt;name&gt;</code>. If a port is taken, whatever listens on it gets SIGTERM, then SIGKILL after a grace period.</p>
+<div class="tbl"><table><thead><tr><th>Process</th><th>Port</th><th>Side</th><th>What it is</th></tr></thead><tbody>
+<tr><td>genesys</td><td>8090</td><td>Northbound</td><td>Genesys inbound flow: A/B split, capacity check, queues, callback, screen-pop, browser UI</td></tr>
+<tr><td>voice_agent</td><td>8080</td><td>Zingly</td><td>Gateway, channel, AI router, agents, auth, handover; an MCP client</td></tr>
+<tr><td>mcp</td><td>8100</td><td>Zingly</td><td>MCP server on the official SDK: <code>/{tenant}/mcp</code>, policy engine, saved copy</td></tr>
+<tr><td>pss</td><td>9001</td><td>Southbound</td><td>Airline reservation system: hard 5 req/s per airline, 429 above it, fault injection</td></tr>
+</tbody></table></div>
+</section>
+
+<section class="s" id="architecture">
+  <div class="s-head"><span class="s-num">2</span><h2>Architecture</h2><div class="aud"><span class="tag it">IT architect</span></div></div>
+  <p class="oneline">The voice agent reaches the airline <b>only through the MCP server</b>, where the policy engine and the saved copy protect the reservation system for every client.</p>
+<figure><div class="fig"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 610" role="img" aria-label="Prototype architecture · four processes" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif"><defs><marker id="parchitecturem64748b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#64748B"/></marker><marker id="parchitecturem64748bs" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10,0 L0,5 L10,10 z" fill="#64748B"/></marker><marker id="parchitecturem4f46e5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#4F46E5"/></marker><marker id="parchitecturem4f46e5s" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10,0 L0,5 L10,10 z" fill="#4F46E5"/></marker><marker id="parchitectureme11d48" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#E11D48"/></marker><marker id="parchitectureme11d48s" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10,0 L0,5 L10,10 z" fill="#E11D48"/></marker><marker id="parchitecturem059669" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#059669"/></marker><marker id="parchitecturem059669s" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10,0 L0,5 L10,10 z" fill="#059669"/></marker><marker id="parchitecturemd97706" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#D97706"/></marker><marker id="parchitecturemd97706s" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10,0 L0,5 L10,10 z" fill="#D97706"/></marker><marker id="parchitecturemdc2626" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#DC2626"/></marker><marker id="parchitecturemdc2626s" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10,0 L0,5 L10,10 z" fill="#DC2626"/></marker><marker id="parchitecturem0891b2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#0891B2"/></marker><marker id="parchitecturem0891b2s" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10,0 L0,5 L10,10 z" fill="#0891B2"/></marker><marker id="parchitecturem7c3aed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#7C3AED"/></marker><marker id="parchitecturem7c3aeds" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10,0 L0,5 L10,10 z" fill="#7C3AED"/></marker><marker id="parchitecturem2563eb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#2563EB"/></marker><marker id="parchitecturem2563ebs" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10,0 L0,5 L10,10 z" fill="#2563EB"/></marker><marker id="parchitecturem0d9488" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#0D9488"/></marker><marker id="parchitecturem0d9488s" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10,0 L0,5 L10,10 z" fill="#0D9488"/></marker></defs><rect width="1240" height="610" rx="14" fill="#FFFFFF" stroke="#CBD5E1"/><text x="28" y="38" font-size="17" font-weight="700" fill="#0F172A">Prototype architecture · four processes</text><text x="28" y="58" font-size="11.5" fill="#475569">Text stands in for audio. The voice agent reaches the airline only through the MCP server, where the policy engine and the saved copy protect the 5 req/s reservation system.</text><rect x="140" y="86" width="192" height="410" rx="12" fill="#FFFBEB" stroke="#D97706" stroke-width="1.2"/><text x="154" y="106" font-size="10.5" font-weight="700" fill="#D97706" text-anchor="start">NORTHBOUND :8090</text><rect x="356" y="86" width="390" height="410" rx="12" fill="#EEF2FF" stroke="#4F46E5" stroke-width="1.2"/><text x="370" y="106" font-size="10.5" font-weight="700" fill="#4F46E5" text-anchor="start">ZINGLY VOICE AGENT :8080</text><rect x="836" y="86" width="200" height="410" rx="12" fill="#ECFEFF" stroke="#0891B2" stroke-width="1.2"/><text x="850" y="106" font-size="10.5" font-weight="700" fill="#0891B2" text-anchor="start">ZINGLY MCP SERVER :8100</text><rect x="1066" y="86" width="148" height="410" rx="12" fill="#ECFDF5" stroke="#059669" stroke-width="1.2"/><text x="1080" y="106" font-size="10.5" font-weight="700" fill="#059669" text-anchor="start">SOUTHBOUND :9001</text><rect x="28" y="122" width="98" height="56" rx="8" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.2"/><text x="77.0" y="145.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">Caller</text><text x="77.0" y="161.0" font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle">text = audio</text><rect x="152" y="114" width="168" height="72" rx="8" fill="#FFFFFF" stroke="#D97706" stroke-width="1.6"/><text x="236.0" y="138.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">Genesys inbound</text><text font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle"><tspan x="236.0" y="154.2">A/B split legacy IVR</tspan><tspan x="236.0" y="167.8">capacity check</tspan></text><rect x="152" y="296" width="168" height="84" rx="8" fill="#FFFFFF" stroke="#D97706" stroke-width="1.6"/><text x="236.0" y="319.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">Queues · callback</text><text font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle"><tspan x="236.0" y="335.5">agent desktop</tspan><tspan x="236.0" y="349.0">screen-pop from</tspan><tspan x="236.0" y="362.5">AGENT_HANDOVER</tspan></text><path d="M126,150 L152,150" fill="none" stroke="#D97706" stroke-width="1.5" marker-end="url(#parchitecturemd97706)"/><rect x="372" y="118" width="160" height="56" rx="8" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.2"/><text x="452.0" y="141.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">Gateway</text><text x="452.0" y="157.0" font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle">sessions · tenant</text><rect x="567" y="118" width="160" height="56" rx="8" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.2"/><text x="647.0" y="141.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">Channel</text><text x="647.0" y="157.0" font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle">text now · LiveKit later</text><rect x="567" y="200" width="160" height="70" rx="8" fill="#FFFFFF" stroke="#4F46E5" stroke-width="1.6"/><text x="647.0" y="216.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">AI router</text><text font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle"><tspan x="647.0" y="232.5">welcome · consent</tspan><tspan x="647.0" y="246.0">fast path · disambiguation</tspan><tspan x="647.0" y="259.5">business routing (rollout %)</tspan></text><rect x="372" y="200" width="160" height="56" rx="8" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.2"/><text x="452.0" y="223.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">Handover</text><text x="452.0" y="239.0" font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle">AGENT_HANDOVER</text><rect x="567" y="296" width="160" height="70" rx="8" fill="#FFFFFF" stroke="#4F46E5" stroke-width="1.6"/><text x="647.0" y="319.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">Agents</text><text font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle"><tspan x="647.0" y="335.2">supervisor</tspan><tspan x="647.0" y="348.8">rebooking · status · FAQ</tspan></text><rect x="372" y="296" width="160" height="70" rx="8" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.2"/><text x="452.0" y="319.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">Auth</text><text font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle"><tspan x="452.0" y="335.2">identity levels · lockout</tspan><tspan x="452.0" y="348.8">signs identity token</tspan></text><rect x="567" y="400" width="160" height="56" rx="8" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.2"/><text x="647.0" y="423.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">MCP client</text><text x="647.0" y="439.0" font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle">official SDK</text><path d="M320,150 L372,150" fill="none" stroke="#D97706" stroke-width="1.5" marker-end="url(#parchitecturemd97706)"/><path d="M532,146 L567,146" fill="none" stroke="#4F46E5" stroke-width="1.5" marker-end="url(#parchitecturem4f46e5)"/><path d="M647,174 L647,200" fill="none" stroke="#4F46E5" stroke-width="1.5" marker-end="url(#parchitecturem4f46e5)"/><path d="M647,270 L647,296" fill="none" stroke="#4F46E5" stroke-width="1.5" marker-end="url(#parchitecturem4f46e5)"/><path d="M567,342 L532,342" fill="none" stroke="#4F46E5" stroke-width="1.5" marker-end="url(#parchitecturem4f46e5)"/><path d="M567,310 L550,310 L550,228 L532,228" fill="none" stroke="#4F46E5" stroke-width="1.5" marker-end="url(#parchitecturem4f46e5)"/><path d="M647,366 L647,400" fill="none" stroke="#4F46E5" stroke-width="1.5" marker-end="url(#parchitecturem4f46e5)"/><path d="M452,366 L452,428 L567,428" fill="none" stroke="#4F46E5" stroke-width="1.5" marker-end="url(#parchitecturem4f46e5)"/><path d="M372,228 L346,228 L346,338 L320,338" fill="none" stroke="#D97706" stroke-width="1.5" marker-end="url(#parchitecturemd97706)"/><rect x="850" y="394" width="172" height="70" rx="8" fill="#FFFFFF" stroke="#0891B2" stroke-width="1.6"/><text x="936.0" y="410.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">MCP endpoint</text><text font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle"><tspan x="936.0" y="426.5">per tenant</tspan><tspan x="936.0" y="440.0">/atlantica/mcp · /nordica/mcp</tspan><tspan x="936.0" y="453.5">+ stdio for Codex</tspan></text><rect x="850" y="286" width="172" height="84" rx="8" fill="#FFFFFF" stroke="#0891B2" stroke-width="1.6"/><text x="936.0" y="309.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">Policy engine</text><text font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle"><tspan x="936.0" y="325.5">identity token · guard</tspan><tspan x="936.0" y="339.0">booking scope</tspan><tspan x="936.0" y="352.5">lanes P0–P3 · breaker</tspan></text><rect x="850" y="204" width="172" height="60" rx="8" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.2"/><text x="936.0" y="222.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">Saved copy</text><text font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle"><tspan x="936.0" y="238.2">fresh · single-flight</tspan><tspan x="936.0" y="251.8">&#x27;as of&#x27; fallback</tspan></text><rect x="850" y="118" width="172" height="64" rx="8" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.2"/><text x="936.0" y="138.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">Reservation tools</text><text font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle"><tspan x="936.0" y="154.2">6 tools</tspan><tspan x="936.0" y="167.8">deferred commits</tspan></text><path d="M727,428 L850,428" fill="none" stroke="#0891B2" stroke-width="2.4" marker-end="url(#parchitecturem0891b2)"/><text x="788" y="416" font-size="10.5" font-weight="650" fill="#0891B2" text-anchor="middle" stroke="#FFFFFF" stroke-width="4" stroke-linejoin="round" paint-order="stroke">MCP protocol</text><text x="788" y="446" font-size="10.5" font-weight="400" fill="#0891B2" text-anchor="middle" stroke="#FFFFFF" stroke-width="4" stroke-linejoin="round" paint-order="stroke">token in _meta</text><path d="M936,394 L936,370" fill="none" stroke="#0891B2" stroke-width="1.5" marker-end="url(#parchitecturem0891b2)"/><path d="M936,286 L936,264" fill="none" stroke="#0891B2" stroke-width="1.5" marker-end="url(#parchitecturem0891b2)"/><path d="M936,204 L936,182" fill="none" stroke="#0891B2" stroke-width="1.5" marker-end="url(#parchitecturem0891b2)"/><rect x="1078" y="118" width="124" height="64" rx="8" fill="#FFFFFF" stroke="#059669" stroke-width="1.6"/><text x="1140.0" y="138.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">Airline PSS</text><text font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle"><tspan x="1140.0" y="154.2">hard 5 req/s</tspan><tspan x="1140.0" y="167.8">429 above it</tspan></text><rect x="1078" y="204" width="124" height="60" rx="8" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.2"/><text x="1140.0" y="229.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">Fault injection</text><text x="1140.0" y="245.0" font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle">errors · latency</text><path d="M1022,150 L1078,150" fill="none" stroke="#059669" stroke-width="2.4" marker-end="url(#parchitecturem059669)"/><text x="1050" y="141" font-size="10.5" font-weight="650" fill="#059669" text-anchor="middle" stroke="#FFFFFF" stroke-width="4" stroke-linejoin="round" paint-order="stroke">HTTP</text><rect x="560" y="522" width="300" height="54" rx="8" fill="#FFFFFF" stroke="#7C3AED" stroke-width="1.6"/><text x="710.0" y="544.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">config/tenants.yml</text><text x="710.0" y="560.0" font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle">one file · every tenant · each module gets its section</text><path d="M640,522 L640,496" fill="none" stroke="#7C3AED" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#parchitecturem7c3aed)"/><path d="M846,522 L846,496" fill="none" stroke="#7C3AED" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#parchitecturem7c3aed)"/><rect x="28" y="522" width="304" height="54" rx="8" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.2"/><text x="180.0" y="544.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">.run/traces.jsonl</text><text x="180.0" y="560.0" font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle">spans from all four processes · W3C traceparent</text><text x="1214" y="540" font-size="10.5" font-weight="400" fill="#475569" text-anchor="end">solid: request path</text><text x="1214" y="558" font-size="10.5" font-weight="400" fill="#475569" text-anchor="end">dashed: configuration</text><text x="1214" y="576" font-size="10.5" font-weight="400" fill="#475569" text-anchor="end">every hop carries the trace context</text></svg></div><figcaption><span>Figure P1 · Four processes, one config file, one trace per caller turn.</span></figcaption></figure>
+  <div class="grid g3">
+    <div class="card problem"><div class="k">Why here</div><h4>Policy inside the MCP server</h4><p>The voice agent, Codex and the MCP Inspector all pass the same guard, booking-scope check, lanes and saved copy. The voice agent holds no reservation code at all; an architecture test enforces it.</p></div>
+    <div class="card proposal"><div class="k">Identity</div><h4>Signed, never a tool argument</h4><p>Auth signs a short-lived identity token after verification. It travels in MCP <code>_meta</code>, so a model can neither see nor forge it, and booking tools act only on the booking named in it.</p></div>
+    <div class="card outcome"><div class="k">Honest seams</div><h4>Text now, voice later</h4><p>The <code>Channel</code>, <code>IntentClassifier</code> and <code>DomainAgent</code> interfaces are where LiveKit audio and LLM agents plug in. Nothing behind them changes.</p></div>
+  </div>
+</section>
+
+<section class="s" id="modules">
+  <div class="s-head"><span class="s-num">3</span><h2>Modules</h2><div class="aud"><span class="tag it">IT architect</span></div></div>
+  <p class="oneline">Each design box is its <b>own library</b> with its interfaces and default implementations inside it; libraries depend only on <code>core</code>.</p>
+<figure><div class="fig"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 450" role="img" aria-label="Modules · libraries depend only on core" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif"><defs><marker id="pmodulesm64748b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#64748B"/></marker><marker id="pmodulesm64748bs" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10,0 L0,5 L10,10 z" fill="#64748B"/></marker><marker id="pmodulesm4f46e5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#4F46E5"/></marker><marker id="pmodulesm4f46e5s" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10,0 L0,5 L10,10 z" fill="#4F46E5"/></marker><marker id="pmodulesme11d48" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#E11D48"/></marker><marker id="pmodulesme11d48s" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10,0 L0,5 L10,10 z" fill="#E11D48"/></marker><marker id="pmodulesm059669" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#059669"/></marker><marker id="pmodulesm059669s" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10,0 L0,5 L10,10 z" fill="#059669"/></marker><marker id="pmodulesmd97706" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#D97706"/></marker><marker id="pmodulesmd97706s" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10,0 L0,5 L10,10 z" fill="#D97706"/></marker><marker id="pmodulesmdc2626" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#DC2626"/></marker><marker id="pmodulesmdc2626s" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10,0 L0,5 L10,10 z" fill="#DC2626"/></marker><marker id="pmodulesm0891b2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#0891B2"/></marker><marker id="pmodulesm0891b2s" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10,0 L0,5 L10,10 z" fill="#0891B2"/></marker><marker id="pmodulesm7c3aed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#7C3AED"/></marker><marker id="pmodulesm7c3aeds" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10,0 L0,5 L10,10 z" fill="#7C3AED"/></marker><marker id="pmodulesm2563eb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#2563EB"/></marker><marker id="pmodulesm2563ebs" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10,0 L0,5 L10,10 z" fill="#2563EB"/></marker><marker id="pmodulesm0d9488" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#0D9488"/></marker><marker id="pmodulesm0d9488s" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10,0 L0,5 L10,10 z" fill="#0D9488"/></marker></defs><rect width="1240" height="450" rx="14" fill="#FFFFFF" stroke="#CBD5E1"/><text x="28" y="38" font-size="17" font-weight="700" fill="#0F172A">Modules · libraries depend only on core</text><text x="28" y="58" font-size="11.5" fill="#475569">Each library owns its interfaces and default implementations. Only the two services wire them; an architecture test fails the build on any other import.</text><rect x="63" y="96" width="688" height="64" rx="8" fill="#FFFFFF" stroke="#4F46E5" stroke-width="1.6"/><text x="407.0" y="123.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">services/voice_agent</text><text x="407.0" y="139.0" font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle">gateway + composition root · official MCP SDK client</text><rect x="773" y="96" width="404" height="64" rx="8" fill="#FFFFFF" stroke="#0891B2" stroke-width="1.6"/><text x="975.0" y="123.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">services/mcp_server</text><text x="975.0" y="139.0" font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle">official MCP SDK server · ops API</text><path d="M751,128 L773,128" fill="none" stroke="#0891B2" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#pmodulesm0891b2)"/><text x="762.0" y="120" font-size="10.5" font-weight="650" fill="#0891B2" text-anchor="middle" stroke="#FFFFFF" stroke-width="4" stroke-linejoin="round" paint-order="stroke">MCP only</text><rect x="46" y="184" width="1148" height="112" rx="12" fill="#F8FAFC" stroke="#64748B" stroke-width="1.2"/><text x="60" y="204" font-size="10.5" font-weight="700" fill="#64748B" text-anchor="start"> </text><rect x="63" y="224" width="120" height="60" rx="8" fill="#FFFFFF" stroke="#4F46E5" stroke-width="1.6"/><text x="123.0" y="242.0" font-size="12" font-weight="650" fill="#0F172A" text-anchor="middle">channel</text><text font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle"><tspan x="123.0" y="258.2">Channel →</tspan><tspan x="123.0" y="271.8">TextChannel</tspan></text><path d="M123.0,160 L123.0,224" fill="none" stroke="#4F46E5" stroke-width="1.5" marker-end="url(#pmodulesm4f46e5)"/><path d="M123.0,284 L123.0,340" fill="none" stroke="#7C3AED" stroke-width="1.5" marker-end="url(#pmodulesm7c3aed)"/><rect x="205" y="224" width="120" height="60" rx="8" fill="#FFFFFF" stroke="#4F46E5" stroke-width="1.6"/><text x="265.0" y="242.0" font-size="12" font-weight="650" fill="#0F172A" text-anchor="middle">ai_router</text><text font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle"><tspan x="265.0" y="258.2">welcome · fast path</tspan><tspan x="265.0" y="271.8">routing</tspan></text><path d="M265.0,160 L265.0,224" fill="none" stroke="#4F46E5" stroke-width="1.5" marker-end="url(#pmodulesm4f46e5)"/><path d="M265.0,284 L265.0,340" fill="none" stroke="#7C3AED" stroke-width="1.5" marker-end="url(#pmodulesm7c3aed)"/><rect x="347" y="224" width="120" height="60" rx="8" fill="#FFFFFF" stroke="#4F46E5" stroke-width="1.6"/><text x="407.0" y="242.0" font-size="12" font-weight="650" fill="#0F172A" text-anchor="middle">agents</text><text font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle"><tspan x="407.0" y="258.2">supervisor +</tspan><tspan x="407.0" y="271.8">3 domain agents</tspan></text><path d="M407.0,160 L407.0,224" fill="none" stroke="#4F46E5" stroke-width="1.5" marker-end="url(#pmodulesm4f46e5)"/><path d="M407.0,284 L407.0,340" fill="none" stroke="#7C3AED" stroke-width="1.5" marker-end="url(#pmodulesm7c3aed)"/><rect x="489" y="224" width="120" height="60" rx="8" fill="#FFFFFF" stroke="#4F46E5" stroke-width="1.6"/><text x="549.0" y="242.0" font-size="12" font-weight="650" fill="#0F172A" text-anchor="middle">auth</text><text font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle"><tspan x="549.0" y="258.2">levels · lockout</tspan><tspan x="549.0" y="271.8">signs token</tspan></text><path d="M549.0,160 L549.0,224" fill="none" stroke="#4F46E5" stroke-width="1.5" marker-end="url(#pmodulesm4f46e5)"/><path d="M549.0,284 L549.0,340" fill="none" stroke="#7C3AED" stroke-width="1.5" marker-end="url(#pmodulesm7c3aed)"/><rect x="631" y="224" width="120" height="60" rx="8" fill="#FFFFFF" stroke="#4F46E5" stroke-width="1.6"/><text x="691.0" y="242.0" font-size="12" font-weight="650" fill="#0F172A" text-anchor="middle">handover</text><text font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle"><tspan x="691.0" y="258.2">AGENT_HANDOVER</tspan><tspan x="691.0" y="271.8">screen-pop</tspan></text><path d="M691.0,160 L691.0,224" fill="none" stroke="#4F46E5" stroke-width="1.5" marker-end="url(#pmodulesm4f46e5)"/><path d="M691.0,284 L691.0,340" fill="none" stroke="#7C3AED" stroke-width="1.5" marker-end="url(#pmodulesm7c3aed)"/><rect x="773" y="224" width="120" height="60" rx="8" fill="#FFFFFF" stroke="#0891B2" stroke-width="1.6"/><text x="833.0" y="242.0" font-size="12" font-weight="650" fill="#0F172A" text-anchor="middle">policy</text><text font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle"><tspan x="833.0" y="258.2">guard · lanes</tspan><tspan x="833.0" y="271.8">breaker</tspan></text><path d="M833.0,160 L833.0,224" fill="none" stroke="#0891B2" stroke-width="1.5" marker-end="url(#pmodulesm0891b2)"/><path d="M833.0,284 L833.0,340" fill="none" stroke="#7C3AED" stroke-width="1.5" marker-end="url(#pmodulesm7c3aed)"/><rect x="915" y="224" width="120" height="60" rx="8" fill="#FFFFFF" stroke="#0891B2" stroke-width="1.6"/><text x="975.0" y="242.0" font-size="12" font-weight="650" fill="#0F172A" text-anchor="middle">saved_copy</text><text font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle"><tspan x="975.0" y="258.2">single-flight</tspan><tspan x="975.0" y="271.8">&#x27;as of&#x27;</tspan></text><path d="M975.0,160 L975.0,224" fill="none" stroke="#0891B2" stroke-width="1.5" marker-end="url(#pmodulesm0891b2)"/><path d="M975.0,284 L975.0,340" fill="none" stroke="#7C3AED" stroke-width="1.5" marker-end="url(#pmodulesm7c3aed)"/><rect x="1057" y="224" width="120" height="60" rx="8" fill="#FFFFFF" stroke="#0891B2" stroke-width="1.6"/><text x="1117.0" y="242.0" font-size="12" font-weight="650" fill="#0F172A" text-anchor="middle">mcp</text><text font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle"><tspan x="1117.0" y="258.2">tools · PSS adapter</tspan><tspan x="1117.0" y="271.8">deferred commits</tspan></text><path d="M1117.0,160 L1117.0,224" fill="none" stroke="#0891B2" stroke-width="1.5" marker-end="url(#pmodulesm0891b2)"/><path d="M1117.0,284 L1117.0,340" fill="none" stroke="#7C3AED" stroke-width="1.5" marker-end="url(#pmodulesm7c3aed)"/><text x="56" y="206" font-size="10.5" font-weight="700" fill="#64748B" text-anchor="start">LIBRARIES</text><rect x="63" y="340" width="1114" height="56" rx="8" fill="#FFFFFF" stroke="#7C3AED" stroke-width="1.6"/><text x="620.0" y="363.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">core</text><text x="620.0" y="379.0" font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle">tenant context · identity level + signed identity token · tenant config loader · tracing</text><text x="63" y="424" font-size="10.5" font-weight="400" fill="#475569" text-anchor="start">When a module needs another one it declares the interface it needs in its own ports.py; the service plugs the other module in.</text></svg></div><figcaption><span>Figure P2 · Two services compose nine libraries.</span></figcaption></figure>
+<div class="tbl"><table><thead><tr><th>Library</th><th>Design box</th><th>Interface → default implementation</th><th>Runs in</th></tr></thead><tbody>
+<tr><td>core</td><td>Shared base</td><td>Tenant context, identity level and signed token, config loader, tracing</td><td>both</td></tr>
+<tr><td>channel</td><td>Voice worker</td><td><code>Channel</code> → <code>TextChannel</code></td><td>voice agent</td></tr>
+<tr><td>ai_router</td><td>AI routing</td><td><code>IntentClassifier</code> → keyword classifier; welcome, fast path, business routing</td><td>voice agent</td></tr>
+<tr><td>agents</td><td>Supervisor + domain agents</td><td><code>DomainAgent</code> → rebooking, flight status, FAQ</td><td>voice agent</td></tr>
+<tr><td>auth</td><td>Auth service</td><td><code>AuthService</code> → lockout, issues the identity token</td><td>voice agent</td></tr>
+<tr><td>handover</td><td>Handover, screen-pop</td><td><code>HandoverBuilder</code> → Genesys payload</td><td>voice agent</td></tr>
+<tr><td>policy</td><td>Policy engine</td><td><code>ToolGuard</code>, <code>AdmissionController</code> (lanes), <code>CircuitBreaker</code></td><td>MCP server</td></tr>
+<tr><td>saved_copy</td><td>Saved copy</td><td><code>SavedCopy</code> → in memory, single-flight</td><td>MCP server</td></tr>
+<tr><td>mcp</td><td>Reservation tools</td><td><code>ToolRegistry</code>, <code>PssBackend</code>, deferred commits (transport-free)</td><td>MCP server</td></tr>
+</tbody></table></div>
+</section>
+
+<section class="s" id="turn">
+  <div class="s-head"><span class="s-num">4</span><h2>One caller turn</h2><div class="aud"><span class="tag it">IT architect</span><span class="tag biz">Business</span></div></div>
+  <p class="oneline">Cheap paths first: <b>rules before any model</b>, the active agent before the classifier, a person whenever the bot cannot finish safely.</p>
+<figure><div class="fig"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 620" role="img" aria-label="One caller turn" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif"><defs><marker id="pturnm64748b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#64748B"/></marker><marker id="pturnm64748bs" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10,0 L0,5 L10,10 z" fill="#64748B"/></marker><marker id="pturnm4f46e5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#4F46E5"/></marker><marker id="pturnm4f46e5s" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10,0 L0,5 L10,10 z" fill="#4F46E5"/></marker><marker id="pturnme11d48" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#E11D48"/></marker><marker id="pturnme11d48s" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10,0 L0,5 L10,10 z" fill="#E11D48"/></marker><marker id="pturnm059669" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#059669"/></marker><marker id="pturnm059669s" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10,0 L0,5 L10,10 z" fill="#059669"/></marker><marker id="pturnmd97706" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#D97706"/></marker><marker id="pturnmd97706s" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10,0 L0,5 L10,10 z" fill="#D97706"/></marker><marker id="pturnmdc2626" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#DC2626"/></marker><marker id="pturnmdc2626s" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10,0 L0,5 L10,10 z" fill="#DC2626"/></marker><marker id="pturnm0891b2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#0891B2"/></marker><marker id="pturnm0891b2s" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10,0 L0,5 L10,10 z" fill="#0891B2"/></marker><marker id="pturnm7c3aed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#7C3AED"/></marker><marker id="pturnm7c3aeds" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10,0 L0,5 L10,10 z" fill="#7C3AED"/></marker><marker id="pturnm2563eb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#2563EB"/></marker><marker id="pturnm2563ebs" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10,0 L0,5 L10,10 z" fill="#2563EB"/></marker><marker id="pturnm0d9488" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#0D9488"/></marker><marker id="pturnm0d9488s" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10,0 L0,5 L10,10 z" fill="#0D9488"/></marker></defs><rect width="1240" height="620" rx="14" fill="#FFFFFF" stroke="#CBD5E1"/><text x="28" y="38" font-size="17" font-weight="700" fill="#0F172A">One caller turn</text><text x="28" y="58" font-size="11.5" fill="#475569">Cheap paths first: rules before any model, the active agent before the classifier, a person whenever the bot cannot finish safely.</text><rect x="28" y="122" width="110" height="56" rx="8" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.2"/><text x="83.0" y="145.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">Caller</text><text x="83.0" y="161.0" font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle">says something</text><rect x="166" y="122" width="160" height="56" rx="8" fill="#FFFFFF" stroke="#D97706" stroke-width="1.6"/><text x="246.0" y="145.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">Genesys</text><text x="246.0" y="161.0" font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle">caller turn · starts trace</text><rect x="354" y="122" width="140" height="56" rx="8" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.2"/><text x="424.0" y="145.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">Gateway</text><text x="424.0" y="161.0" font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle">session · tenant</text><rect x="522" y="122" width="130" height="56" rx="8" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.2"/><text x="587.0" y="145.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">Channel</text><text x="587.0" y="161.0" font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle">text · DTMF</text><rect x="686" y="100" width="180" height="100" rx="8" fill="#FFFFFF" stroke="#4F46E5" stroke-width="1.6"/><text x="776.0" y="131.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">AI router</text><text font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle"><tspan x="776.0" y="147.5">rules first,</tspan><tspan x="776.0" y="161.0">then classifier</tspan><tspan x="776.0" y="174.5">+ rollout %</tspan></text><path d="M138,150 L166,150" fill="none" stroke="#D97706" stroke-width="1.5" marker-end="url(#pturnmd97706)"/><path d="M326,150 L354,150" fill="none" stroke="#4F46E5" stroke-width="1.5" marker-end="url(#pturnm4f46e5)"/><path d="M494,150 L522,150" fill="none" stroke="#4F46E5" stroke-width="1.5" marker-end="url(#pturnm4f46e5)"/><path d="M652,150 L686,150" fill="none" stroke="#4F46E5" stroke-width="1.5" marker-end="url(#pturnm4f46e5)"/><path d="M866,150 H896" fill="none" stroke="#4F46E5" stroke-width="1.5"/><path d="M896,120 V348" fill="none" stroke="#4F46E5" stroke-width="1.5"/><rect x="924" y="92" width="290" height="58" rx="8" fill="#FFFFFF" stroke="#059669" stroke-width="1.6"/><text x="1069.0" y="109.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">Fast path</text><text font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle"><tspan x="1069.0" y="125.2">hi · yes/no · agent · no model</tspan><tspan x="1069.0" y="138.8">cached reply, or yes/no bound to the pending question</tspan></text><path d="M896,120 L924,120" fill="none" stroke="#4F46E5" stroke-width="1.5" marker-end="url(#pturnm4f46e5)"/><rect x="924" y="168" width="290" height="58" rx="8" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.2"/><text x="1069.0" y="185.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">Clarify</text><text font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle"><tspan x="1069.0" y="201.2">intent unclear: one short question</tspan><tspan x="1069.0" y="214.8">handover after two</tspan></text><path d="M896,196 L924,196" fill="none" stroke="#4F46E5" stroke-width="1.5" marker-end="url(#pturnm4f46e5)"/><rect x="924" y="244" width="290" height="58" rx="8" fill="#FFFFFF" stroke="#4F46E5" stroke-width="1.6"/><text x="1069.0" y="261.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">Same topic</text><text font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle"><tspan x="1069.0" y="277.2">slot answers (&#x27;ABC123&#x27;) stay with</tspan><tspan x="1069.0" y="290.8">the active domain agent</tspan></text><path d="M896,272 L924,272" fill="none" stroke="#4F46E5" stroke-width="1.5" marker-end="url(#pturnm4f46e5)"/><rect x="924" y="320" width="290" height="58" rx="8" fill="#FFFFFF" stroke="#4F46E5" stroke-width="1.6"/><text x="1069.0" y="337.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">Topic change</text><text font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle"><tspan x="1069.0" y="353.2">classifier picks a new agent (rollout %)</tspan><tspan x="1069.0" y="366.8">the open task is suspended, resumed later</tspan></text><path d="M896,348 L924,348" fill="none" stroke="#4F46E5" stroke-width="1.5" marker-end="url(#pturnm4f46e5)"/><path d="M1069,378 V420 H808" fill="none" stroke="#4F46E5" stroke-width="1.5"/><path d="M1214,273 H1226 V420 H1069" fill="none" stroke="#4F46E5" stroke-width="1.5"/><path d="M808,420 L808,470" fill="none" stroke="#4F46E5" stroke-width="1.5" marker-end="url(#pturnm4f46e5)"/><rect x="708" y="470" width="200" height="70" rx="8" fill="#FFFFFF" stroke="#4F46E5" stroke-width="1.6"/><text x="808.0" y="486.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">Domain agent</text><text font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle"><tspan x="808.0" y="502.5">rebooking · flight status · FAQ</tspan><tspan x="808.0" y="516.0">identity token stays out of</tspan><tspan x="808.0" y="529.5">tool arguments</tspan></text><rect x="940" y="470" width="274" height="70" rx="8" fill="#FFFFFF" stroke="#0891B2" stroke-width="1.6"/><text x="1077.0" y="493.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">MCP server</text><text font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle"><tspan x="1077.0" y="509.2">guard · booking scope · lanes</tspan><tspan x="1077.0" y="522.8">saved copy · reservation system</tspan></text><path d="M908,505 L940,505" fill="none" stroke="#0891B2" stroke-width="2" marker-start="url(#pturnm0891b2s)" marker-end="url(#pturnm0891b2)"/><text x="924" y="496" font-size="10.5" font-weight="650" fill="#0891B2" text-anchor="middle" stroke="#FFFFFF" stroke-width="4" stroke-linejoin="round" paint-order="stroke">tools/call</text><rect x="484" y="470" width="190" height="70" rx="8" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.2"/><text x="579.0" y="493.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">Agent reply</text><text font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle"><tspan x="579.0" y="509.2">next question · done ·</tspan><tspan x="579.0" y="522.8">cannot finish safely</tspan></text><path d="M708,505 L674,505" fill="none" stroke="#4F46E5" stroke-width="1.5" marker-end="url(#pturnm4f46e5)"/><rect x="260" y="470" width="196" height="70" rx="8" fill="#FFFFFF" stroke="#DC2626" stroke-width="1.6"/><text x="358.0" y="493.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">AGENT_HANDOVER</text><text font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle"><tspan x="358.0" y="509.2">who · why · how verified</tspan><tspan x="358.0" y="522.8">what was already tried</tspan></text><path d="M484,505 L456,505" fill="none" stroke="#DC2626" stroke-width="1.5" marker-end="url(#pturnmdc2626)"/><rect x="28" y="470" width="200" height="70" rx="8" fill="#FFFFFF" stroke="#D97706" stroke-width="1.6"/><text x="128.0" y="493.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">Genesys queue</text><text font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle"><tspan x="128.0" y="509.2">or callback when the wait</tspan><tspan x="128.0" y="522.8">is long · screen-pop</tspan></text><path d="M260,505 L228,505" fill="none" stroke="#DC2626" stroke-width="1.5" marker-end="url(#pturnmdc2626)"/><rect x="28" y="300" width="200" height="64" rx="8" fill="#FFFFFF" stroke="#059669" stroke-width="1.6"/><text x="128.0" y="320.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">Reply to the caller</text><text font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle"><tspan x="128.0" y="336.2">next question, resume the</tspan><tspan x="128.0" y="349.8">suspended task, or &#x27;anything else?&#x27;</tspan></text><path d="M579,470 L579,332 L228,332" fill="none" stroke="#059669" stroke-width="1.5" marker-end="url(#pturnm059669)"/><path d="M83,300 L83,178" fill="none" stroke="#059669" stroke-width="1.5" marker-end="url(#pturnm059669)"/><text x="590" y="450" font-size="10.5" font-weight="400" fill="#059669" text-anchor="start" stroke="#FFFFFF" stroke-width="4" stroke-linejoin="round" paint-order="stroke">next question / done</text><text x="370" y="462" font-size="10.5" font-weight="400" fill="#DC2626" text-anchor="middle" stroke="#FFFFFF" stroke-width="4" stroke-linejoin="round" paint-order="stroke">cannot finish</text><text x="28" y="596" font-size="10.5" font-weight="400" fill="#475569" text-anchor="start">Fast path and clarify answer straight back to the caller. AI disclosure and itinerary read-back cannot be interrupted.</text></svg></div><figcaption><span>Figure P3 · Fast path, clarify, same topic, topic change; then a reply or a handover.</span></figcaption></figure>
+</section>
+
+<section class="s" id="protection">
+  <div class="s-head"><span class="s-num">5</span><h2>Reservation protection</h2><div class="aud"><span class="tag it">IT architect</span><span class="tag sec">Security</span></div></div>
+  <p class="oneline">Every reservation call passes identity, guard and scope checks, then <b>degrades instead of failing</b> when a lane is full. Writes are never served from the copy and never retried blindly.</p>
+<figure><div class="fig"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 790" role="img" aria-label="How a reservation call is protected (inside the MCP server)" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif"><defs><marker id="pprotectionm64748b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#64748B"/></marker><marker id="pprotectionm64748bs" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10,0 L0,5 L10,10 z" fill="#64748B"/></marker><marker id="pprotectionm4f46e5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#4F46E5"/></marker><marker id="pprotectionm4f46e5s" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10,0 L0,5 L10,10 z" fill="#4F46E5"/></marker><marker id="pprotectionme11d48" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#E11D48"/></marker><marker id="pprotectionme11d48s" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10,0 L0,5 L10,10 z" fill="#E11D48"/></marker><marker id="pprotectionm059669" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#059669"/></marker><marker id="pprotectionm059669s" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10,0 L0,5 L10,10 z" fill="#059669"/></marker><marker id="pprotectionmd97706" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#D97706"/></marker><marker id="pprotectionmd97706s" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10,0 L0,5 L10,10 z" fill="#D97706"/></marker><marker id="pprotectionmdc2626" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#DC2626"/></marker><marker id="pprotectionmdc2626s" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10,0 L0,5 L10,10 z" fill="#DC2626"/></marker><marker id="pprotectionm0891b2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#0891B2"/></marker><marker id="pprotectionm0891b2s" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10,0 L0,5 L10,10 z" fill="#0891B2"/></marker><marker id="pprotectionm7c3aed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#7C3AED"/></marker><marker id="pprotectionm7c3aeds" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10,0 L0,5 L10,10 z" fill="#7C3AED"/></marker><marker id="pprotectionm2563eb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#2563EB"/></marker><marker id="pprotectionm2563ebs" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10,0 L0,5 L10,10 z" fill="#2563EB"/></marker><marker id="pprotectionm0d9488" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#0D9488"/></marker><marker id="pprotectionm0d9488s" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10,0 L0,5 L10,10 z" fill="#0D9488"/></marker></defs><rect width="1240" height="790" rx="14" fill="#FFFFFF" stroke="#CBD5E1"/><text x="28" y="38" font-size="17" font-weight="700" fill="#0F172A">How a reservation call is protected (inside the MCP server)</text><text x="28" y="58" font-size="11.5" fill="#475569">Every client goes through the same checks: the voice agent, Codex, the MCP Inspector. Writes are never served from the copy and never retried blindly.</text><rect x="28" y="112" width="150" height="56" rx="8" fill="#FFFFFF" stroke="#0891B2" stroke-width="1.6"/><text x="103.0" y="135.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">tools/call</text><text x="103.0" y="151.0" font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle">from any MCP client</text><rect x="206" y="100" width="196" height="80" rx="8" fill="#FFFFFF" stroke="#4F46E5" stroke-width="1.6"/><text x="304.0" y="121.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">Identity token</text><text font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle"><tspan x="304.0" y="137.5">signature · tenant · expiry</tspan><tspan x="304.0" y="151.0">→ level + booking</tspan><tspan x="304.0" y="164.5">none or invalid → unknown</tspan></text><rect x="430" y="112" width="170" height="56" rx="8" fill="#FFFFFF" stroke="#4F46E5" stroke-width="1.6"/><text x="515.0" y="135.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">Guard</text><text x="515.0" y="151.0" font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle">tool allowed at this level?</text><rect x="628" y="112" width="196" height="56" rx="8" fill="#FFFFFF" stroke="#4F46E5" stroke-width="1.6"/><text x="726.0" y="135.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">Booking scope</text><text x="726.0" y="151.0" font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle">booking = token&#x27;s booking?</text><rect x="852" y="112" width="190" height="56" rx="8" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.2"/><text x="947.0" y="135.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">Which data?</text><text x="947.0" y="151.0" font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle">shared, or the caller&#x27;s own</text><path d="M178,140 L206,140" fill="none" stroke="#0891B2" stroke-width="1.5" marker-end="url(#pprotectionm0891b2)"/><path d="M402,140 L430,140" fill="none" stroke="#0891B2" stroke-width="1.5" marker-end="url(#pprotectionm0891b2)"/><path d="M600,140 L628,140" fill="none" stroke="#0891B2" stroke-width="1.5" marker-end="url(#pprotectionm0891b2)"/><path d="M824,140 L852,140" fill="none" stroke="#0891B2" stroke-width="1.5" marker-end="url(#pprotectionm0891b2)"/><rect x="470" y="222" width="210" height="50" rx="8" fill="#FFFFFF" stroke="#DC2626" stroke-width="1.6"/><text x="575.0" y="242.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">denied</text><text x="575.0" y="258.0" font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle">nothing reaches the PSS</text><path d="M515,168 L515,222" fill="none" stroke="#DC2626" stroke-width="1.5" marker-end="url(#pprotectionmdc2626)"/><text x="523" y="200" font-size="10.5" font-weight="400" fill="#DC2626" text-anchor="start" stroke="#FFFFFF" stroke-width="4" stroke-linejoin="round" paint-order="stroke">not allowed</text><path d="M726,168 L726,247 L680,247" fill="none" stroke="#DC2626" stroke-width="1.5" marker-end="url(#pprotectionmdc2626)"/><text x="734" y="200" font-size="10.5" font-weight="400" fill="#DC2626" text-anchor="start" stroke="#FFFFFF" stroke-width="4" stroke-linejoin="round" paint-order="stroke">other booking</text><path d="M947,168 V230" fill="none" stroke="#0891B2" stroke-width="1.5"/><path d="M947,230 L760,230 L760,300" fill="none" stroke="#0891B2" stroke-width="1.5" marker-end="url(#pprotectionm0891b2)"/><path d="M947,230 L1076,230 L1076,300" fill="none" stroke="#0891B2" stroke-width="1.5" marker-end="url(#pprotectionm0891b2)"/><text x="860" y="222" font-size="10.5" font-weight="400" fill="#0891B2" text-anchor="middle" stroke="#FFFFFF" stroke-width="4" stroke-linejoin="round" paint-order="stroke">status · options · caller-ID hint</text><text x="1080" y="222" font-size="10.5" font-weight="400" fill="#0891B2" text-anchor="start" stroke="#FFFFFF" stroke-width="4" stroke-linejoin="round" paint-order="stroke">verify · booking · rebook</text><rect x="660" y="300" width="200" height="64" rx="8" fill="#FFFFFF" stroke="#0891B2" stroke-width="1.6"/><text x="760.0" y="320.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">Saved copy fresh?</text><text font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle"><tspan x="760.0" y="336.2">25 s for options</tspan><tspan x="760.0" y="349.8">filled by the disruption pre-warm</tspan></text><rect x="940" y="296" width="272" height="84" rx="8" fill="#FFFFFF" stroke="#0891B2" stroke-width="1.6"/><text x="1076.0" y="319.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">Breaker closed + lane token?</text><text font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle"><tspan x="1076.0" y="335.5">within the lane&#x27;s wait budget</tspan><tspan x="1076.0" y="349.0">P0 3 s · P1 1.5 s · P2 0.5 s · P3 0 s</tspan><tspan x="1076.0" y="362.5">higher lanes borrow idle capacity</tspan></text><path d="M860,332 L940,332" fill="none" stroke="#0891B2" stroke-width="1.5" marker-end="url(#pprotectionm0891b2)"/><text x="900" y="322" font-size="10.5" font-weight="400" fill="#0891B2" text-anchor="middle" stroke="#FFFFFF" stroke-width="4" stroke-linejoin="round" paint-order="stroke">no: one loader</text><text x="900" y="352" font-size="10.5" font-weight="400" fill="#0891B2" text-anchor="middle" stroke="#FFFFFF" stroke-width="4" stroke-linejoin="round" paint-order="stroke">per key</text><rect x="660" y="436" width="200" height="56" rx="8" fill="#FFFFFF" stroke="#059669" stroke-width="1.6"/><text x="760.0" y="459.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">Answer the caller</text><text x="760.0" y="475.0" font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle">from the copy: 0 PSS requests</text><path d="M760,364 L760,436" fill="none" stroke="#059669" stroke-width="1.5" marker-end="url(#pprotectionm059669)"/><text x="768" y="386" font-size="10.5" font-weight="400" fill="#059669" text-anchor="start" stroke="#FFFFFF" stroke-width="4" stroke-linejoin="round" paint-order="stroke">yes</text><rect x="1000" y="436" width="212" height="56" rx="8" fill="#FFFFFF" stroke="#059669" stroke-width="1.6"/><text x="1106.0" y="459.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">Airline PSS</text><text x="1106.0" y="475.0" font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle">hard 5 req/s</text><path d="M1106,380 L1106,436" fill="none" stroke="#059669" stroke-width="1.5" marker-end="url(#pprotectionm059669)"/><text x="1114" y="412" font-size="10.5" font-weight="400" fill="#059669" text-anchor="start" stroke="#FFFFFF" stroke-width="4" stroke-linejoin="round" paint-order="stroke">yes</text><path d="M1000,464 L860,464" fill="none" stroke="#059669" stroke-width="1.5" marker-end="url(#pprotectionm059669)"/><text x="930" y="456" font-size="10.5" font-weight="400" fill="#059669" text-anchor="middle" stroke="#FFFFFF" stroke-width="4" stroke-linejoin="round" paint-order="stroke">ok</text><rect x="380" y="436" width="236" height="70" rx="8" fill="#FFFFFF" stroke="#D97706" stroke-width="1.6"/><text x="498.0" y="452.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">Lane full: degrade, don&#x27;t fail</text><text font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle"><tspan x="498.0" y="468.5">read → saved copy labelled &#x27;as of&#x27;</tspan><tspan x="498.0" y="482.0">rebook → deferred commit</tspan><tspan x="498.0" y="495.5">(same idempotency key, SMS later)</tspan></text><path d="M980,380 L980,408 L498,408 L498,436" fill="none" stroke="#D97706" stroke-width="1.5" marker-end="url(#pprotectionmd97706)"/><text x="600" y="400" font-size="10.5" font-weight="400" fill="#D97706" text-anchor="middle" stroke="#FFFFFF" stroke-width="4" stroke-linejoin="round" paint-order="stroke">no: lane full</text><rect x="1000" y="588" width="212" height="56" rx="8" fill="#FFFFFF" stroke="#4F46E5" stroke-width="1.6"/><text x="1106.0" y="611.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">Read the booking back</text><text x="1106.0" y="627.0" font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle">never a blind retry</text><path d="M1106,492 L1106,588" fill="none" stroke="#DC2626" stroke-width="1.5" marker-end="url(#pprotectionmdc2626)"/><text x="1114" y="544" font-size="10.5" font-weight="400" fill="#DC2626" text-anchor="start" stroke="#FFFFFF" stroke-width="4" stroke-linejoin="round" paint-order="stroke">write timed out</text><path d="M1000,616 H976" fill="none" stroke="#4F46E5" stroke-width="1.5"/><path d="M976,558 V696" fill="none" stroke="#4F46E5" stroke-width="1.5"/><rect x="716" y="532" width="232" height="52" rx="8" fill="#FFFFFF" stroke="#059669" stroke-width="1.6"/><text x="832.0" y="553.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">Moved → confirmed</text><text x="832.0" y="569.0" font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle">the write had landed</text><path d="M976,558.0 L948,558.0" fill="none" stroke="#4F46E5" stroke-width="1.5" marker-end="url(#pprotectionm4f46e5)"/><rect x="716" y="600" width="232" height="52" rx="8" fill="#FFFFFF" stroke="#DC2626" stroke-width="1.6"/><text x="832.0" y="621.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">Unchanged → unavailable</text><text x="832.0" y="637.0" font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle">booking untouched; handover</text><path d="M976,626.0 L948,626.0" fill="none" stroke="#4F46E5" stroke-width="1.5" marker-end="url(#pprotectionm4f46e5)"/><rect x="716" y="668" width="232" height="56" rx="8" fill="#FFFFFF" stroke="#D97706" stroke-width="1.6"/><text x="832.0" y="684.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">Unreadable → reconcile</text><text font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle"><tspan x="832.0" y="700.2">outcome unknown: replay later</tspan><tspan x="832.0" y="713.8">under the same idempotency key</tspan></text><path d="M976,696.0 L948,696.0" fill="none" stroke="#4F46E5" stroke-width="1.5" marker-end="url(#pprotectionm4f46e5)"/><text x="28" y="766" font-size="10.5" font-weight="400" fill="#475569" text-anchor="start">Lanes split the PSS limit 40/30/20/10 under a parent limit set a little below it (4 of 5 req/s). Counters live in memory here and in Redis in production.</text></svg></div><figcaption><span>Figure P4 · Inside the MCP server: token, guard, scope, saved copy, lanes, read-back.</span></figcaption></figure>
+</section>
+
+<section class="s" id="tenancy">
+  <div class="s-head"><span class="s-num">6</span><h2>Multi-tenancy</h2><div class="aud"><span class="tag it">IT architect</span></div></div>
+  <p class="oneline"><b>One deployment, one config file</b>: each process builds a runtime per tenant, and a call is matched to its tenant by the dialed number.</p>
+<figure><div class="fig"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 470" role="img" aria-label="Multi-tenancy · one deployment, one config file" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif"><defs><marker id="ptenancym64748b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#64748B"/></marker><marker id="ptenancym64748bs" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10,0 L0,5 L10,10 z" fill="#64748B"/></marker><marker id="ptenancym4f46e5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#4F46E5"/></marker><marker id="ptenancym4f46e5s" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10,0 L0,5 L10,10 z" fill="#4F46E5"/></marker><marker id="ptenancyme11d48" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#E11D48"/></marker><marker id="ptenancyme11d48s" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10,0 L0,5 L10,10 z" fill="#E11D48"/></marker><marker id="ptenancym059669" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#059669"/></marker><marker id="ptenancym059669s" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10,0 L0,5 L10,10 z" fill="#059669"/></marker><marker id="ptenancymd97706" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#D97706"/></marker><marker id="ptenancymd97706s" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10,0 L0,5 L10,10 z" fill="#D97706"/></marker><marker id="ptenancymdc2626" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#DC2626"/></marker><marker id="ptenancymdc2626s" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10,0 L0,5 L10,10 z" fill="#DC2626"/></marker><marker id="ptenancym0891b2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#0891B2"/></marker><marker id="ptenancym0891b2s" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10,0 L0,5 L10,10 z" fill="#0891B2"/></marker><marker id="ptenancym7c3aed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#7C3AED"/></marker><marker id="ptenancym7c3aeds" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10,0 L0,5 L10,10 z" fill="#7C3AED"/></marker><marker id="ptenancym2563eb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#2563EB"/></marker><marker id="ptenancym2563ebs" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10,0 L0,5 L10,10 z" fill="#2563EB"/></marker><marker id="ptenancym0d9488" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#0D9488"/></marker><marker id="ptenancym0d9488s" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10,0 L0,5 L10,10 z" fill="#0D9488"/></marker></defs><rect width="1240" height="470" rx="14" fill="#FFFFFF" stroke="#CBD5E1"/><text x="28" y="38" font-size="17" font-weight="700" fill="#0F172A">Multi-tenancy · one deployment, one config file</text><text x="28" y="58" font-size="11.5" fill="#475569">Each process builds one runtime per tenant from the merged sections. A call is matched to a tenant by its dialed number.</text><rect x="28" y="196" width="190" height="84" rx="8" fill="#FFFFFF" stroke="#7C3AED" stroke-width="1.6"/><text x="123.0" y="219.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">config/tenants.yml</text><text font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle"><tspan x="123.0" y="235.5">platform</tspan><tspan x="123.0" y="249.0">defaults per module</tspan><tspan x="123.0" y="262.5">tenants + overrides</tspan></text><rect x="252" y="208" width="172" height="60" rx="8" fill="#FFFFFF" stroke="#7C3AED" stroke-width="1.6"/><text x="338.0" y="226.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">Deep-merge</text><text font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle"><tspan x="338.0" y="242.2">defaults + each</tspan><tspan x="338.0" y="255.8">tenant block</tspan></text><path d="M218,238 L252,238" fill="none" stroke="#7C3AED" stroke-width="1.5" marker-end="url(#ptenancym7c3aed)"/><rect x="470" y="100" width="300" height="126" rx="8" fill="#FFFFFF" stroke="#2563EB" stroke-width="1.6"/><text x="620.0" y="137.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">Atlantica · +448000001234</text><text font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle"><tspan x="620.0" y="153.8">consent prompt on</tspan><tspan x="620.0" y="167.2">rebooking for 100% of calls</tspan><tspan x="620.0" y="180.8">lanes 40 / 30 / 20 / 10</tspan><tspan x="620.0" y="194.2">deferred commits on</tspan></text><rect x="470" y="256" width="300" height="126" rx="8" fill="#FFFFFF" stroke="#0D9488" stroke-width="1.6"/><text x="620.0" y="293.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">Nordica · +4780001234</text><text font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle"><tspan x="620.0" y="309.8">no consent prompt</tspan><tspan x="620.0" y="323.2">rebooking canaried to 50%</tspan><tspan x="620.0" y="336.8">lanes 50 / 30 / 10 / 10</tspan><tspan x="620.0" y="350.2">deferred commits off · own queues</tspan></text><path d="M424,228 L446,228 L446,163 L470,163" fill="none" stroke="#7C3AED" stroke-width="1.5" marker-end="url(#ptenancym7c3aed)"/><path d="M424,248 L446,248 L446,319 L470,319" fill="none" stroke="#7C3AED" stroke-width="1.5" marker-end="url(#ptenancym7c3aed)"/><rect x="830" y="100" width="384" height="52" rx="8" fill="#FFFFFF" stroke="#4F46E5" stroke-width="1.6"/><text x="1022.0" y="121.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">Voice agent runtime · atlantica</text><text x="1022.0" y="137.0" font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle">router · agents · auth lockouts · handover queues</text><rect x="830" y="166" width="384" height="60" rx="8" fill="#FFFFFF" stroke="#0891B2" stroke-width="1.6"/><text x="1022.0" y="184.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">MCP runtime · /atlantica/mcp</text><text font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle"><tspan x="1022.0" y="200.2">own lanes · saved copy · breaker · signing key</tspan><tspan x="1022.0" y="213.8">deferred queue · verification throttle</tspan></text><path d="M770,130 L800,130 L800,126 L830,126" fill="none" stroke="#2563EB" stroke-width="1.5" marker-end="url(#ptenancym2563eb)"/><path d="M800,130 L800,196 L830,196" fill="none" stroke="#2563EB" stroke-width="1.5" marker-end="url(#ptenancym2563eb)"/><rect x="830" y="256" width="384" height="52" rx="8" fill="#FFFFFF" stroke="#4F46E5" stroke-width="1.6"/><text x="1022.0" y="277.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">Voice agent runtime · nordica</text><text x="1022.0" y="293.0" font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle">router · agents · auth lockouts · handover queues</text><rect x="830" y="322" width="384" height="60" rx="8" fill="#FFFFFF" stroke="#0891B2" stroke-width="1.6"/><text x="1022.0" y="340.0" font-size="12.5" font-weight="650" fill="#0F172A" text-anchor="middle">MCP runtime · /nordica/mcp</text><text font-size="10.5" font-weight="400" fill="#475569" text-anchor="middle"><tspan x="1022.0" y="356.2">own lanes · saved copy · breaker · signing key</tspan><tspan x="1022.0" y="369.8">deferred queue · verification throttle</tspan></text><path d="M770,286 L800,286 L800,282 L830,282" fill="none" stroke="#0D9488" stroke-width="1.5" marker-end="url(#ptenancym0d9488)"/><path d="M800,286 L800,352 L830,352" fill="none" stroke="#0D9488" stroke-width="1.5" marker-end="url(#ptenancym0d9488)"/><text x="28" y="418" font-size="10.5" font-weight="400" fill="#475569" text-anchor="start">Isolation: lane buckets, saved copy, breaker, lockout counters, deferred queue, idempotency keys and identity-token keys are all per tenant.</text><text x="28" y="438" font-size="10.5" font-weight="400" fill="#475569" text-anchor="start">One tenant&#x27;s storm cannot starve another (tested). A token issued for Atlantica is rejected on /nordica/mcp.</text></svg></div><figcaption><span>Figure P5 · Atlantica and Nordica from <code>config/tenants.yml</code>.</span></figcaption></figure>
+</section>
+
+<section class="s" id="mcp">
+  <div class="s-head"><span class="s-num">7</span><h2>MCP server</h2><div class="aud"><span class="tag it">IT architect</span></div></div>
+  <p class="oneline">A real Model Context Protocol server on the official Python SDK: <b>Streamable HTTP per tenant and stdio</b>, so Codex or the MCP Inspector can use it directly.</p>
+<div class="tbl"><table><thead><tr><th>Tool</th><th>Needs</th><th>Lane</th><th>Notes</th></tr></thead><tbody>
+<tr><td>get_flight_status</td><td>nothing</td><td>P3</td><td>Saved copy first, single-flight on a miss</td></tr>
+<tr><td>get_alternatives</td><td>nothing</td><td>P2</td><td>Fresh for 25 s, then one loader per route</td></tr>
+<tr><td>lookup_caller_id</td><td>nothing</td><td>P1</td><td>Masked summary only, never booking data</td></tr>
+<tr><td>verify_booking</td><td>nothing</td><td>P1</td><td>Booking only on a match; throttled per booking, whoever asks</td></tr>
+<tr><td>get_booking</td><td>VERIFIED token for that booking</td><td>P1</td><td>Live first, saved copy as the "as of" fallback</td></tr>
+<tr><td>rebook</td><td>VERIFIED token for that booking</td><td>P0</td><td>Idempotent; deferred when P0 is saturated; reconciled when a timed-out write cannot be read back</td></tr>
+</tbody></table></div>
+<details><summary>Connect Codex (stdio)</summary><div class="in"><pre><code>[mcp_servers.zingly_atlantica]
+command = "/path/to/assignment_zingly/prototype/.venv/bin/python"
+args = ["-m", "mcp_server", "--stdio", "--tenant", "atlantica"]
+env = { "ZINGLY_TENANTS_CONFIG" = "/path/to/assignment_zingly/prototype/config/tenants.yml" }</code></pre>
+<p class="small muted">Streamable HTTP endpoint: <code>http://127.0.0.1:8100/atlantica/mcp</code>. Full guide: <a href="https://github.com/dharam1291/assignment_zingly/blob/main/prototype/docs/MCP_SERVER.md">MCP_SERVER.md</a>.</p></div></details>
+</section>
+
+<section class="s" id="flows">
+  <div class="s-head"><span class="s-num">8</span><h2>Demonstration flows</h2><div class="aud"><span class="tag biz">Business</span><span class="tag it">IT architect</span></div></div>
+  <p class="oneline">Fourteen YAML scenarios run against the <b>live servers</b>, check every reply and the final booking, and record their traces as documentation.</p>
+<div class="tbl"><table><thead><tr><th>Flow</th><th>Shows</th></tr></thead><tbody>
+<tr><td><a href="https://github.com/dharam1291/assignment_zingly/blob/main/prototype/docs/flows/01_happy_rebooking.md">01 Happy rebooking</a></td><td>Likely → verified, side question then resume, commit in P0, signed token</td></tr>
+<tr><td><a href="https://github.com/dharam1291/assignment_zingly/blob/main/prototype/docs/flows/02_flight_status_public.md">02 Flight status</a></td><td>No identity needed; saved copy, 0 PSS requests, "as of"</td></tr>
+<tr><td><a href="https://github.com/dharam1291/assignment_zingly/blob/main/prototype/docs/flows/03_clarify_then_route.md">03 Clarify</a></td><td>Ambiguous intent, one clarifying question</td></tr>
+<tr><td><a href="https://github.com/dharam1291/assignment_zingly/blob/main/prototype/docs/flows/04_verification_lockout.md">04 Lockout</a></td><td>Three failures lock; no hint whether the reference exists</td></tr>
+<tr><td><a href="https://github.com/dharam1291/assignment_zingly/blob/main/prototype/docs/flows/05_caller_asks_for_agent.md">05 Ask for an agent</a></td><td>Fast-path handover with full context</td></tr>
+<tr><td><a href="https://github.com/dharam1291/assignment_zingly/blob/main/prototype/docs/flows/06_consent_declined.md">06 Consent declined</a></td><td>Consent first; "no" goes to a person</td></tr>
+<tr><td><a href="https://github.com/dharam1291/assignment_zingly/blob/main/prototype/docs/flows/07_pss_down_handover.md">07 PSS down</a></td><td>Safe failure, no attempt used up, callback offered</td></tr>
+<tr><td><a href="https://github.com/dharam1291/assignment_zingly/blob/main/prototype/docs/flows/08_pss_brownout_saved_copy.md">08 PSS brownout</a></td><td>Saved copy "as of", read-before-retry, idempotent reconciliation</td></tr>
+<tr><td><a href="https://github.com/dharam1291/assignment_zingly/blob/main/prototype/docs/flows/09_deferred_commit.md">09 Deferred commit</a></td><td>P0 saturated → deferred commit, confirmed later</td></tr>
+<tr><td><a href="https://github.com/dharam1291/assignment_zingly/blob/main/prototype/docs/flows/10_breaker_open_capacity.md">10 Breaker opens</a></td><td>Breaker open → Genesys capacity check → a person</td></tr>
+<tr><td><a href="https://github.com/dharam1291/assignment_zingly/blob/main/prototype/docs/flows/11_capacity_full.md">11 Capacity full</a></td><td>Session ceiling → overflow to the human queue</td></tr>
+<tr><td><a href="https://github.com/dharam1291/assignment_zingly/blob/main/prototype/docs/flows/12_second_tenant_nordica.md">12 Second tenant</a></td><td>Same deployment, Nordica config, rollout canary</td></tr>
+<tr><td><a href="https://github.com/dharam1291/assignment_zingly/blob/main/prototype/docs/flows/13_ab_split_legacy_ivr.md">13 A/B split</a></td><td>Genesys sends the call to the legacy IVR</td></tr>
+<tr><td><a href="https://github.com/dharam1291/assignment_zingly/blob/main/prototype/docs/flows/14_mcp_direct_client.md">14 MCP client</a></td><td>MCP protocol, guard, booking scope, idempotent write</td></tr>
+</tbody></table></div>
+</section>
+
+<section class="s" id="spike">
+  <div class="s-head"><span class="s-num">9</span><h2>Spike and gaps</h2><div class="aud"><span class="tag biz">Business</span><span class="tag it">IT architect</span></div></div>
+  <p class="oneline">120 callers from the cancelled AT123 at 6 new calls per second against the 5 req/s system, <b>through the real MCP protocol</b>.</p>
+<div class="tbl"><table><thead><tr><th>Measure</th><th class="num">Protection off</th><th class="num">Protection on</th></tr></thead><tbody>
+<tr><td>PSS 429 rejections</td><td class="num">126</td><td class="num"><b>0</b></td></tr>
+<tr><td>PSS requests per call</td><td class="num">1.84</td><td class="num">0.67</td></tr>
+<tr><td>PSS peak accepted req/s</td><td class="num">5 (at the limit)</td><td class="num">4 (parent limit)</td></tr>
+<tr><td>Callers rebooked</td><td class="num">5</td><td class="num">50 (12 deferred, all confirmed)</td></tr>
+<tr><td>Handed over because a backend call failed</td><td class="num">85</td><td class="num">0</td></tr>
+<tr><td>Flight-status callers answered</td><td class="num">30 of 70</td><td class="num">70 of 70</td></tr>
+</tbody></table></div>
+  <p class="small muted">Numbers vary a little run to run. Every degraded mode (brownout, PSS down, breaker, capacity, MCP or voice agent down, lockout, tenant isolation) has a command and an expected outcome in <a href="https://github.com/dharam1291/assignment_zingly/blob/main/prototype/docs/TESTING_GAPS.md">TESTING_GAPS.md</a>.</p>
+</section>
+
+<section class="s" id="tracing">
+  <div class="s-head"><span class="s-num">10</span><h2>Tracing</h2><div class="aud"><span class="tag it">IT architect</span></div></div>
+  <p class="oneline">One caller turn is <b>one trace across all four processes</b>, propagated with W3C <code>traceparent</code> (in MCP <code>_meta</code> on the MCP hop).</p>
+<pre><code>[genesys] genesys.caller_turn (192 ms)
+  [voice-agent] gateway.turn path=same_topic agent=rebooking identity=verified
+    [voice-agent] agents.handle agent=rebooking next_question=choose_option
+      [voice-agent] auth.verify outcome=verified
+        [voice-agent] mcp.call_tool tool=verify_booking status=ok source=pss
+          [mcp-server] mcp.tool tool=verify_booking
+            [mcp-server] policy.guard allowed=True
+            [mcp-server] policy.admission lane=P1 admitted=True waited_ms=0.0
+            [mcp-server] pss.request operation=get_booking http_status=200
+              [airline-pss] pss.handle resource=bookings http_status=200 limit_rps=5
+      [voice-agent] mcp.call_tool tool=get_alternatives source=saved_copy
+          [mcp-server] saved_copy.get_or_load source=fresh</code></pre>
+  <p class="small muted">Span catalogue and how each flow runs component by component: <a href="https://github.com/dharam1291/assignment_zingly/blob/main/prototype/docs/TRACING.md">TRACING.md</a>. Recorded flows with sequence diagrams: <a href="https://github.com/dharam1291/assignment_zingly/blob/main/prototype/docs/flows/README.md">docs/flows</a>.</p>
+</section>
+
+<section class="s" id="production">
+  <div class="s-head"><span class="s-num">11</span><h2>Tests &amp; production</h2><div class="aud"><span class="tag it">IT architect</span><span class="tag sec">Security</span></div></div>
+  <p class="oneline"><b>56 automated tests</b> run with <code>./start_up.sh test</code>; the module boundaries and contracts stay, the default implementations get swapped for production.</p>
+  <div class="grid g3">
+    <div class="card problem"><div class="k">Before the first caller</div><h4>Close the security gaps</h4><ul><li>Authentication on the gateway, MCP server and handover context</li><li>Remove the demo admin switches</li><li>Identity-token keys in KMS, short expiry</li></ul></div>
+    <div class="card proposal"><div class="k">Swap the implementation</div><h4>Same interfaces</h4><ul><li>Text channel → LiveKit participant</li><li>Templates → LLM agents via the AI gateway</li><li>In-memory state → Redis + a durable queue</li><li>Custom tracer → OpenTelemetry</li></ul></div>
+    <div class="card outcome"><div class="k">Already in place</div><h4>Behaviour to keep</h4><ul><li>0 × 429 under the spike</li><li>Read-before-retry, idempotent reconciliation</li><li>Every failure ends in a person</li></ul></div>
+  </div>
+  <p class="small muted">Area-by-area list: <a href="https://github.com/dharam1291/assignment_zingly/blob/main/prototype/docs/PRODUCTION_READINESS.md">PRODUCTION_READINESS.md</a>.</p>
+</section>
+
+  </main>
+</div>
+
+<footer>
+  <span>Atlantica Airways is fictional. Prepared for the Zingly Senior Solutions Architect exercise.</span>
+  <span><a href="index.html">Solution design</a> · <a href="https://github.com/dharam1291/assignment_zingly/tree/main/prototype">Prototype source</a></span>
+</footer>
+
+<script>
+(function () {
+  // Theme toggle: remembers the choice per viewer; falls back to the OS setting.
+  var root = document.documentElement, key = "zingly-theme";
+  try { var saved = localStorage.getItem(key); if (saved) root.setAttribute("data-theme", saved); } catch (e) {}
+  document.getElementById("themeBtn").addEventListener("click", function () {
+    var dark = root.getAttribute("data-theme") ? root.getAttribute("data-theme") === "dark"
+                                               : matchMedia("(prefers-color-scheme: dark)").matches;
+    var next = dark ? "light" : "dark";
+    root.setAttribute("data-theme", next);
+    try { localStorage.setItem(key, next); } catch (e) {}
+  });
+
+  // Reading progress and active section in the contents.
+  var bar = document.getElementById("progress");
+  var links = Array.prototype.slice.call(document.querySelectorAll("nav.toc a"));
+  var sections = links.map(function (a) { return document.querySelector(a.getAttribute("href")); });
+  function onScroll() {
+    var h = document.documentElement;
+    bar.style.width = (100 * h.scrollTop / Math.max(1, h.scrollHeight - h.clientHeight)) + "%";
+    var current = 0;
+    sections.forEach(function (s, i) { if (s && s.getBoundingClientRect().top < 140) current = i; });
+    links.forEach(function (a, i) { a.classList.toggle("active", i === current); });
+  }
+  document.addEventListener("scroll", onScroll, { passive: true });
+  onScroll();
+})();
+</script>
+</body>
+</html>

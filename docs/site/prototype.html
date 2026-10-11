@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zingly Voice Prototype</title>
+<meta name="description" content="Prototype of the Atlantica disruption voice agent: Genesys simulator, Zingly voice agent, a real MCP server and a rate-limited airline reservation system, with runnable flows, traces and a load spike.">
+{{STYLE}}
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-in">
+    <a class="brand" href="#top"><span class="brand-mark">Z</span> Zingly Voice <small>· Prototype</small></a>
+    <span class="spacer"></span>
+    <span class="meta"><a href="index.html">← Solution design</a> · Prototype · Oct 2026</span>
+    <button class="theme-btn" id="themeBtn" type="button" aria-label="Toggle colour theme">◐ Theme</button>
+  </div>
+  <div class="progress" id="progress"></div>
+</header>
+
+<div class="hero" id="top">
+  <div class="hero-in">
+    <span class="eyebrow">Prototype · runnable slice of the solution design</span>
+    <h1>A disruption call, end to end, <em>running on your laptop</em>.</h1>
+    <p class="lede">Caller text goes in through a Genesys simulator, the Zingly voice agent identifies the caller and answers through a real MCP server, and the MCP server protects a mocked airline reservation system that refuses anything above 5 requests per second. Every handover produces the Genesys screen-pop payload. No LLM and no API key: the agents run in the design's deterministic mode.</p>
+    <div class="hero-meta">
+      <span><b>Start</b> <code>cd prototype &amp;&amp; ./start_up.sh</code></span>
+      <span><b>Needs</b> Python 3.11+</span>
+      <span><b>Source</b> <a href="https://github.com/dharam1291/assignment_zingly/tree/main/prototype" style="color:#C7D2FE">prototype/</a></span>
+    </div>
+    <div class="kpis">
+      <div class="kpi"><div class="v">4</div><div class="l">processes: Genesys, voice agent, MCP server, airline PSS</div><span class="t">Topology</span></div>
+      <div class="kpi"><div class="v">126 → 0</div><div class="l">reservation-system 429s in the same spike, protection off vs on</div><span class="t">Protection</span></div>
+      <div class="kpi"><div class="v">14</div><div class="l">runnable flows, each recorded with its distributed trace</div><span class="t">Demonstrable</span></div>
+      <div class="kpi"><div class="v">6</div><div class="l">MCP tools, usable from the voice agent, Codex or the Inspector</div><span class="t">Real MCP</span></div>
+      <div class="kpi"><div class="v">56</div><div class="l">automated tests, including architecture rules</div><span class="t">Quality</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="layout">
+  <nav class="toc" aria-label="Contents">
+    <div class="h">Overview</div>
+    <ol>
+      <li><a href="#start"><span class="n">1</span>Quick start</a></li>
+      <li><a href="#architecture"><span class="n">2</span>Architecture</a></li>
+      <li><a href="#modules"><span class="n">3</span>Modules</a></li>
+    </ol>
+    <div class="h">How it works</div>
+    <ol>
+      <li><a href="#turn"><span class="n">4</span>One caller turn</a></li>
+      <li><a href="#protection"><span class="n">5</span>Reservation protection</a></li>
+      <li><a href="#tenancy"><span class="n">6</span>Multi-tenancy</a></li>
+      <li><a href="#mcp"><span class="n">7</span>MCP server</a></li>
+    </ol>
+    <div class="h">Evidence</div>
+    <ol>
+      <li><a href="#flows"><span class="n">8</span>Demonstration flows</a></li>
+      <li><a href="#spike"><span class="n">9</span>Spike and gaps</a></li>
+      <li><a href="#tracing"><span class="n">10</span>Tracing</a></li>
+      <li><a href="#production"><span class="n">11</span>Tests &amp; production</a></li>
+    </ol>
+  </nav>
+
+  <main>
+<section class="s" id="start">
+  <div class="s-head"><span class="s-num">1</span><h2>Quick start</h2><div class="aud"><span class="tag it">IT architect</span><span class="tag ">Reviewer</span></div></div>
+  <p class="oneline">One script sets up Python, <b>frees busy ports gracefully</b>, and starts the four servers in dependency order.</p>
+<pre><code>cd prototype
+./start_up.sh                                        # venv + install + start all four servers
+.venv/bin/python scripts/run_flow.py --list          # the 14 demonstration flows
+.venv/bin/python scripts/run_flow.py happy_rebooking --trace
+.venv/bin/python -m genesys_sim --trace              # interactive call in the terminal
+open http://127.0.0.1:8090                           # softphone + agent desktop in a browser
+.venv/bin/python scripts/spike.py                    # load spike: unprotected vs protected
+./start_up.sh stop</code></pre>
+  <p class="small muted">Also <code>restart</code>, <code>status</code>, <code>test</code> and <code>logs &lt;name&gt;</code>. If a port is taken, whatever listens on it gets SIGTERM, then SIGKILL after a grace period.</p>
+<div class="tbl"><table><thead><tr><th>Process</th><th>Port</th><th>Side</th><th>What it is</th></tr></thead><tbody>
+<tr><td>genesys</td><td>8090</td><td>Northbound</td><td>Genesys inbound flow: A/B split, capacity check, queues, callback, screen-pop, browser UI</td></tr>
+<tr><td>voice_agent</td><td>8080</td><td>Zingly</td><td>Gateway, channel, AI router, agents, auth, handover; an MCP client</td></tr>
+<tr><td>mcp</td><td>8100</td><td>Zingly</td><td>MCP server on the official SDK: <code>/{tenant}/mcp</code>, policy engine, saved copy</td></tr>
+<tr><td>pss</td><td>9001</td><td>Southbound</td><td>Airline reservation system: hard 5 req/s per airline, 429 above it, fault injection</td></tr>
+</tbody></table></div>
+</section>
+
+<section class="s" id="architecture">
+  <div class="s-head"><span class="s-num">2</span><h2>Architecture</h2><div class="aud"><span class="tag it">IT architect</span></div></div>
+  <p class="oneline">The voice agent reaches the airline <b>only through the MCP server</b>, where the policy engine and the saved copy protect the reservation system for every client.</p>
+<figure><div class="fig">{{PFIG:architecture}}</div><figcaption><span>Figure P1 · Four processes, one config file, one trace per caller turn.</span></figcaption></figure>
+  <div class="grid g3">
+    <div class="card problem"><div class="k">Why here</div><h4>Policy inside the MCP server</h4><p>The voice agent, Codex and the MCP Inspector all pass the same guard, booking-scope check, lanes and saved copy. The voice agent holds no reservation code at all; an architecture test enforces it.</p></div>
+    <div class="card proposal"><div class="k">Identity</div><h4>Signed, never a tool argument</h4><p>Auth signs a short-lived identity token after verification. It travels in MCP <code>_meta</code>, so a model can neither see nor forge it, and booking tools act only on the booking named in it.</p></div>
+    <div class="card outcome"><div class="k">Honest seams</div><h4>Text now, voice later</h4><p>The <code>Channel</code>, <code>IntentClassifier</code> and <code>DomainAgent</code> interfaces are where LiveKit audio and LLM agents plug in. Nothing behind them changes.</p></div>
+  </div>
+</section>
+
+<section class="s" id="modules">
+  <div class="s-head"><span class="s-num">3</span><h2>Modules</h2><div class="aud"><span class="tag it">IT architect</span></div></div>
+  <p class="oneline">Each design box is its <b>own library</b> with its interfaces and default implementations inside it; libraries depend only on <code>core</code>.</p>
+<figure><div class="fig">{{PFIG:modules}}</div><figcaption><span>Figure P2 · Two services compose nine libraries.</span></figcaption></figure>
+<div class="tbl"><table><thead><tr><th>Library</th><th>Design box</th><th>Interface → default implementation</th><th>Runs in</th></tr></thead><tbody>
+<tr><td>core</td><td>Shared base</td><td>Tenant context, identity level and signed token, config loader, tracing</td><td>both</td></tr>
+<tr><td>channel</td><td>Voice worker</td><td><code>Channel</code> → <code>TextChannel</code></td><td>voice agent</td></tr>
+<tr><td>ai_router</td><td>AI routing</td><td><code>IntentClassifier</code> → keyword classifier; welcome, fast path, business routing</td><td>voice agent</td></tr>
+<tr><td>agents</td><td>Supervisor + domain agents</td><td><code>DomainAgent</code> → rebooking, flight status, FAQ</td><td>voice agent</td></tr>
+<tr><td>auth</td><td>Auth service</td><td><code>AuthService</code> → lockout, issues the identity token</td><td>voice agent</td></tr>
+<tr><td>handover</td><td>Handover, screen-pop</td><td><code>HandoverBuilder</code> → Genesys payload</td><td>voice agent</td></tr>
+<tr><td>policy</td><td>Policy engine</td><td><code>ToolGuard</code>, <code>AdmissionController</code> (lanes), <code>CircuitBreaker</code></td><td>MCP server</td></tr>
+<tr><td>saved_copy</td><td>Saved copy</td><td><code>SavedCopy</code> → in memory, single-flight</td><td>MCP server</td></tr>
+<tr><td>mcp</td><td>Reservation tools</td><td><code>ToolRegistry</code>, <code>PssBackend</code>, deferred commits (transport-free)</td><td>MCP server</td></tr>
+</tbody></table></div>
+</section>
+
+<section class="s" id="turn">
+  <div class="s-head"><span class="s-num">4</span><h2>One caller turn</h2><div class="aud"><span class="tag it">IT architect</span><span class="tag biz">Business</span></div></div>
+  <p class="oneline">Cheap paths first: <b>rules before any model</b>, the active agent before the classifier, a person whenever the bot cannot finish safely.</p>
+<figure><div class="fig">{{PFIG:turn}}</div><figcaption><span>Figure P3 · Fast path, clarify, same topic, topic change; then a reply or a handover.</span></figcaption></figure>
+</section>
+
+<section class="s" id="protection">
+  <div class="s-head"><span class="s-num">5</span><h2>Reservation protection</h2><div class="aud"><span class="tag it">IT architect</span><span class="tag sec">Security</span></div></div>
+  <p class="oneline">Every reservation call passes identity, guard and scope checks, then <b>degrades instead of failing</b> when a lane is full. Writes are never served from the copy and never retried blindly.</p>
+<figure><div class="fig">{{PFIG:protection}}</div><figcaption><span>Figure P4 · Inside the MCP server: token, guard, scope, saved copy, lanes, read-back.</span></figcaption></figure>
+</section>
+
+<section class="s" id="tenancy">
+  <div class="s-head"><span class="s-num">6</span><h2>Multi-tenancy</h2><div class="aud"><span class="tag it">IT architect</span></div></div>
+  <p class="oneline"><b>One deployment, one config file</b>: each process builds a runtime per tenant, and a call is matched to its tenant by the dialed number.</p>
+<figure><div class="fig">{{PFIG:tenancy}}</div><figcaption><span>Figure P5 · Atlantica and Nordica from <code>config/tenants.yml</code>.</span></figcaption></figure>
+</section>
+
+<section class="s" id="mcp">
+  <div class="s-head"><span class="s-num">7</span><h2>MCP server</h2><div class="aud"><span class="tag it">IT architect</span></div></div>
+  <p class="oneline">A real Model Context Protocol server on the official Python SDK: <b>Streamable HTTP per tenant and stdio</b>, so Codex or the MCP Inspector can use it directly.</p>
+<div class="tbl"><table><thead><tr><th>Tool</th><th>Needs</th><th>Lane</th><th>Notes</th></tr></thead><tbody>
+<tr><td>get_flight_status</td><td>nothing</td><td>P3</td><td>Saved copy first, single-flight on a miss</td></tr>
+<tr><td>get_alternatives</td><td>nothing</td><td>P2</td><td>Fresh for 25 s, then one loader per route</td></tr>
+<tr><td>lookup_caller_id</td><td>nothing</td><td>P1</td><td>Masked summary only, never booking data</td></tr>
+<tr><td>verify_booking</td><td>nothing</td><td>P1</td><td>Booking only on a match; throttled per booking, whoever asks</td></tr>
+<tr><td>get_booking</td><td>VERIFIED token for that booking</td><td>P1</td><td>Live first, saved copy as the "as of" fallback</td></tr>
+<tr><td>rebook</td><td>VERIFIED token for that booking</td><td>P0</td><td>Idempotent; deferred when P0 is saturated; reconciled when a timed-out write cannot be read back</td></tr>
+</tbody></table></div>
+<details><summary>Connect Codex (stdio)</summary><div class="in"><pre><code>[mcp_servers.zingly_atlantica]
+command = "/path/to/assignment_zingly/prototype/.venv/bin/python"
+args = ["-m", "mcp_server", "--stdio", "--tenant", "atlantica"]
+env = { "ZINGLY_TENANTS_CONFIG" = "/path/to/assignment_zingly/prototype/config/tenants.yml" }</code></pre>
+<p class="small muted">Streamable HTTP endpoint: <code>http://127.0.0.1:8100/atlantica/mcp</code>. Full guide: <a href="https://github.com/dharam1291/assignment_zingly/blob/main/prototype/docs/MCP_SERVER.md">MCP_SERVER.md</a>.</p></div></details>
+</section>
+
+<section class="s" id="flows">
+  <div class="s-head"><span class="s-num">8</span><h2>Demonstration flows</h2><div class="aud"><span class="tag biz">Business</span><span class="tag it">IT architect</span></div></div>
+  <p class="oneline">Fourteen YAML scenarios run against the <b>live servers</b>, check every reply and the final booking, and record their traces as documentation.</p>
+<div class="tbl"><table><thead><tr><th>Flow</th><th>Shows</th></tr></thead><tbody>
+<tr><td><a href="{{GH}}/docs/flows/01_happy_rebooking.md">01 Happy rebooking</a></td><td>Likely → verified, side question then resume, commit in P0, signed token</td></tr>
+<tr><td><a href="{{GH}}/docs/flows/02_flight_status_public.md">02 Flight status</a></td><td>No identity needed; saved copy, 0 PSS requests, "as of"</td></tr>
+<tr><td><a href="{{GH}}/docs/flows/03_clarify_then_route.md">03 Clarify</a></td><td>Ambiguous intent, one clarifying question</td></tr>
+<tr><td><a href="{{GH}}/docs/flows/04_verification_lockout.md">04 Lockout</a></td><td>Three failures lock; no hint whether the reference exists</td></tr>
+<tr><td><a href="{{GH}}/docs/flows/05_caller_asks_for_agent.md">05 Ask for an agent</a></td><td>Fast-path handover with full context</td></tr>
+<tr><td><a href="{{GH}}/docs/flows/06_consent_declined.md">06 Consent declined</a></td><td>Consent first; "no" goes to a person</td></tr>
+<tr><td><a href="{{GH}}/docs/flows/07_pss_down_handover.md">07 PSS down</a></td><td>Safe failure, no attempt used up, callback offered</td></tr>
+<tr><td><a href="{{GH}}/docs/flows/08_pss_brownout_saved_copy.md">08 PSS brownout</a></td><td>Saved copy "as of", read-before-retry, idempotent reconciliation</td></tr>
+<tr><td><a href="{{GH}}/docs/flows/09_deferred_commit.md">09 Deferred commit</a></td><td>P0 saturated → deferred commit, confirmed later</td></tr>
+<tr><td><a href="{{GH}}/docs/flows/10_breaker_open_capacity.md">10 Breaker opens</a></td><td>Breaker open → Genesys capacity check → a person</td></tr>
+<tr><td><a href="{{GH}}/docs/flows/11_capacity_full.md">11 Capacity full</a></td><td>Session ceiling → overflow to the human queue</td></tr>
+<tr><td><a href="{{GH}}/docs/flows/12_second_tenant_nordica.md">12 Second tenant</a></td><td>Same deployment, Nordica config, rollout canary</td></tr>
+<tr><td><a href="{{GH}}/docs/flows/13_ab_split_legacy_ivr.md">13 A/B split</a></td><td>Genesys sends the call to the legacy IVR</td></tr>
+<tr><td><a href="{{GH}}/docs/flows/14_mcp_direct_client.md">14 MCP client</a></td><td>MCP protocol, guard, booking scope, idempotent write</td></tr>
+</tbody></table></div>
+</section>
+
+<section class="s" id="spike">
+  <div class="s-head"><span class="s-num">9</span><h2>Spike and gaps</h2><div class="aud"><span class="tag biz">Business</span><span class="tag it">IT architect</span></div></div>
+  <p class="oneline">120 callers from the cancelled AT123 at 6 new calls per second against the 5 req/s system, <b>through the real MCP protocol</b>.</p>
+<div class="tbl"><table><thead><tr><th>Measure</th><th class="num">Protection off</th><th class="num">Protection on</th></tr></thead><tbody>
+<tr><td>PSS 429 rejections</td><td class="num">126</td><td class="num"><b>0</b></td></tr>
+<tr><td>PSS requests per call</td><td class="num">1.84</td><td class="num">0.67</td></tr>
+<tr><td>PSS peak accepted req/s</td><td class="num">5 (at the limit)</td><td class="num">4 (parent limit)</td></tr>
+<tr><td>Callers rebooked</td><td class="num">5</td><td class="num">50 (12 deferred, all confirmed)</td></tr>
+<tr><td>Handed over because a backend call failed</td><td class="num">85</td><td class="num">0</td></tr>
+<tr><td>Flight-status callers answered</td><td class="num">30 of 70</td><td class="num">70 of 70</td></tr>
+</tbody></table></div>
+  <p class="small muted">Numbers vary a little run to run. Every degraded mode (brownout, PSS down, breaker, capacity, MCP or voice agent down, lockout, tenant isolation) has a command and an expected outcome in <a href="{{GH}}/docs/TESTING_GAPS.md">TESTING_GAPS.md</a>.</p>
+</section>
+
+<section class="s" id="tracing">
+  <div class="s-head"><span class="s-num">10</span><h2>Tracing</h2><div class="aud"><span class="tag it">IT architect</span></div></div>
+  <p class="oneline">One caller turn is <b>one trace across all four processes</b>, propagated with W3C <code>traceparent</code> (in MCP <code>_meta</code> on the MCP hop).</p>
+<pre><code>[genesys] genesys.caller_turn (192 ms)
+  [voice-agent] gateway.turn path=same_topic agent=rebooking identity=verified
+    [voice-agent] agents.handle agent=rebooking next_question=choose_option
+      [voice-agent] auth.verify outcome=verified
+        [voice-agent] mcp.call_tool tool=verify_booking status=ok source=pss
+          [mcp-server] mcp.tool tool=verify_booking
+            [mcp-server] policy.guard allowed=True
+            [mcp-server] policy.admission lane=P1 admitted=True waited_ms=0.0
+            [mcp-server] pss.request operation=get_booking http_status=200
+              [airline-pss] pss.handle resource=bookings http_status=200 limit_rps=5
+      [voice-agent] mcp.call_tool tool=get_alternatives source=saved_copy
+          [mcp-server] saved_copy.get_or_load source=fresh</code></pre>
+  <p class="small muted">Span catalogue and how each flow runs component by component: <a href="{{GH}}/docs/TRACING.md">TRACING.md</a>. Recorded flows with sequence diagrams: <a href="{{GH}}/docs/flows/README.md">docs/flows</a>.</p>
+</section>
+
+<section class="s" id="production">
+  <div class="s-head"><span class="s-num">11</span><h2>Tests &amp; production</h2><div class="aud"><span class="tag it">IT architect</span><span class="tag sec">Security</span></div></div>
+  <p class="oneline"><b>56 automated tests</b> run with <code>./start_up.sh test</code>; the module boundaries and contracts stay, the default implementations get swapped for production.</p>
+  <div class="grid g3">
+    <div class="card problem"><div class="k">Before the first caller</div><h4>Close the security gaps</h4><ul><li>Authentication on the gateway, MCP server and handover context</li><li>Remove the demo admin switches</li><li>Identity-token keys in KMS, short expiry</li></ul></div>
+    <div class="card proposal"><div class="k">Swap the implementation</div><h4>Same interfaces</h4><ul><li>Text channel → LiveKit participant</li><li>Templates → LLM agents via the AI gateway</li><li>In-memory state → Redis + a durable queue</li><li>Custom tracer → OpenTelemetry</li></ul></div>
+    <div class="card outcome"><div class="k">Already in place</div><h4>Behaviour to keep</h4><ul><li>0 × 429 under the spike</li><li>Read-before-retry, idempotent reconciliation</li><li>Every failure ends in a person</li></ul></div>
+  </div>
+  <p class="small muted">Area-by-area list: <a href="{{GH}}/docs/PRODUCTION_READINESS.md">PRODUCTION_READINESS.md</a>.</p>
+</section>
+
+  </main>
+</div>
+
+<footer>
+  <span>Atlantica Airways is fictional. Prepared for the Zingly Senior Solutions Architect exercise.</span>
+  <span><a href="index.html">Solution design</a> · <a href="https://github.com/dharam1291/assignment_zingly/tree/main/prototype">Prototype source</a></span>
+</footer>
+
+{{SCRIPT}}
+</body>
+</html>

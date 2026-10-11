@@ -16,18 +16,18 @@ Twilio stays the carrier, Genesys stays the contact centre, and the reservation 
 | # | Deliverable | Where |
 |---|---|---|
 | 1 | **Solution design** (5 pages) | [Web page](https://dharam1291.github.io/assignment_zingly/) · [Markdown](docs/SOLUTION_DESIGN.md) |
-| 2 | **Prototype**: a simulated disruption call end to end through Genesys (northbound), the voice agent, a real MCP server and a 5 req/s airline reservation system (southbound); handover payload, 14 runnable flows with recorded traces, and a spike test | [`prototype/`](prototype/README.md) · `cd prototype && ./start_up.sh` |
+| 2 | **Prototype**: the disruption call end to end through Genesys, the voice agent, a real MCP server and a 5 req/s reservation system, with 14 runnable flows and a load spike | [Web page](https://dharam1291.github.io/assignment_zingly/prototype.html) · [Markdown](prototype/README.md) · run: `cd prototype && ./start_up.sh` |
 
 ## View it
 
-**Online:** https://dharam1291.github.io/assignment_zingly/ (needs GitHub Pages on: Settings → Pages → Deploy from a branch → `main` / `/docs`).
+**Online:** solution design at https://dharam1291.github.io/assignment_zingly/ and prototype at https://dharam1291.github.io/assignment_zingly/prototype.html (needs GitHub Pages on: Settings → Pages → Deploy from a branch → `main` / `/docs`).
 
-**Locally:** download the repo and open `docs/index.html` in a browser. It is one self-contained file. GitHub itself only shows this file as source code.
+**Locally:** download the repo and open `docs/index.html` or `docs/prototype.html` in a browser. Each is one self-contained file. GitHub itself only shows these files as source code.
 
 ## Rebuild
 
 Python 3.11+, standard library only.
 
 ```bash
-  python docs/diagrams/build_diagrams.py && python docs/build_site.py
+  python docs/diagrams/build_diagrams.py && python prototype/docs/diagrams/build_diagrams.py && python docs/build_site.py
 ```
