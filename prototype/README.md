@@ -42,74 +42,7 @@ waits for each one's health check. Other commands are `stop`, `restart`, `status
 
 ## Architecture
 
-```mermaid
-flowchart LR
-    caller(["☎ Caller"]):::actor
-    cfg[["config/tenants.yml<br/>one file · all tenants"]]:::config
-    traces[(".run/traces.jsonl<br/>trace collector")]:::obs
-
-    subgraph NB["Northbound · Genesys simulator :8090"]
-        direction TB
-        ivr["Inbound flow<br/>A/B split · capacity check"]:::north
-        queues["Queues · callback<br/>agent desktop screen-pop"]:::north
-    end
-
-    subgraph VA["Zingly voice agent :8080"]
-        direction TB
-        gw["Gateway"]:::voice
-        ch["Channel<br/>text now · LiveKit later"]:::voice
-        rt["AI router<br/>welcome · consent · fast path<br/>disambiguation · business routing"]:::voice
-        ag["Agents<br/>supervisor · rebooking<br/>flight status · FAQ"]:::voice
-        au["Auth<br/>identity levels · lockout<br/>signs identity token"]:::voice
-        ho["Handover<br/>AGENT_HANDOVER"]:::voice
-        mc["MCP client"]:::voice
-    end
-
-    subgraph MS["Zingly MCP server :8100"]
-        direction TB
-        ep["MCP endpoint per tenant<br/>/atlantica/mcp · /nordica/mcp"]:::mcp
-        po["Policy engine<br/>guard · booking scope<br/>priority lanes · breaker"]:::mcp
-        sc["Saved copy<br/>single-flight · as-of"]:::mcp
-        tl["Reservation tools<br/>+ deferred commits"]:::mcp
-    end
-
-    subgraph SB["Southbound · airline PSS :9001"]
-        pss["Reservation system<br/>hard 5 req/s · 429"]:::south
-    end
-
-    caller -->|"speaks (text)"| ivr
-    ivr -->|"create conversation · utterances"| gw
-    gw --> ch --> rt --> ag
-    ag --> au
-    ag --> ho
-    ag --> mc
-    au --> mc
-    mc ==>|"MCP Streamable HTTP<br/>identity token in _meta"| ep
-    ep --> po --> sc --> tl
-    tl ==>|"HTTP · traceparent"| pss
-    ho -->|"screen-pop payload"| queues
-    cfg -.-> VA
-    cfg -.-> MS
-    VA -.->|spans| traces
-    MS -.->|spans| traces
-    NB -.->|spans| traces
-    SB -.->|spans| traces
-
-    classDef actor fill:#FFFFFF,stroke:#37474F,color:#000
-    classDef north fill:#E3F2FD,stroke:#1E88E5,color:#0D47A1
-    classDef voice fill:#E8F5E9,stroke:#43A047,color:#1B5E20
-    classDef mcp fill:#FFF3E0,stroke:#FB8C00,color:#E65100
-    classDef south fill:#FCE4EC,stroke:#D81B60,color:#880E4F
-    classDef config fill:#F3E5F5,stroke:#8E24AA,color:#4A148C
-    classDef obs fill:#ECEFF1,stroke:#546E7A,color:#263238
-    style NB fill:#F5FAFF,stroke:#1E88E5
-    style VA fill:#F6FBF6,stroke:#43A047
-    style MS fill:#FFFAF2,stroke:#FB8C00
-    style SB fill:#FFF5F8,stroke:#D81B60
-    linkStyle 0,1 stroke:#1E88E5,stroke-width:2px
-    linkStyle 9 stroke:#FB8C00,stroke-width:3px
-    linkStyle 13 stroke:#D81B60,stroke-width:3px
-```
+![Prototype architecture: Genesys (northbound), voice agent, MCP server, airline PSS (southbound)](docs/diagrams/architecture.svg)
 
 **Why the policy engine lives inside the MCP server.** Every client of the reservation system
 passes through the same door: the voice agent, Codex, or the MCP Inspector. So the guard, the
@@ -134,29 +67,7 @@ Two services compose them. The interfaces and default implementations of a modul
 | `saved_copy` | saved copy | `SavedCopy` → `InMemorySavedCopy` | `saved_copy` | MCP server |
 | `mcp` | reservation tools | `ToolRegistry`, `PssBackend` → `HttpPssBackend`, `DeferredCommits` (transport-free) | `mcp` | MCP server |
 
-```mermaid
-flowchart BT
-    core["core"]:::core
-    subgraph L["libraries: each imports only core"]
-        channel:::lib
-        ai_router:::lib
-        agents:::lib
-        auth:::lib
-        handover:::lib
-        policy:::lib
-        saved_copy:::lib
-        mcp:::lib
-    end
-    va["services/voice_agent<br/>composes channel · ai_router · agents · auth · handover<br/>+ MCP SDK client"]:::svc
-    ms["services/mcp_server<br/>composes policy · saved_copy · mcp<br/>+ MCP SDK server"]:::svc
-    L --> core
-    va --> channel & ai_router & agents & auth & handover
-    ms --> policy & saved_copy & mcp
-    va -. "MCP protocol only" .-> ms
-    classDef core fill:#F3E5F5,stroke:#8E24AA,color:#4A148C
-    classDef lib fill:#E8F5E9,stroke:#43A047,color:#1B5E20
-    classDef svc fill:#FFF3E0,stroke:#FB8C00,color:#E65100
-```
+![Modules: libraries depend only on core; two services compose them](docs/diagrams/modules.svg)
 
 When a module needs another one, it declares the interface it needs **in its own package**
 (`ports.py`), and the service plugs the other module in. For example, `mcp` declares `AdmissionPort`
@@ -166,78 +77,15 @@ library, the MCP SDK inside a library, or the voice agent importing reservation 
 
 ## How one caller turn is handled
 
-```mermaid
-flowchart TD
-    U["Caller text"]:::in --> G["Genesys: caller turn<br/>starts the trace"]:::north
-    G --> GW["Gateway: session, tenant"]:::voice --> CH["Channel: normalise, DTMF"]:::voice --> R{"AI router"}:::router
-    R -->|"hi · yes/no · agent<br/>fast path, no model"| FP["Cached reply, or yes/no<br/>bound to the pending question"]:::voice
-    R -->|"same topic<br/>(slot answers stay put)"| A["Active domain agent"]:::voice
-    R -->|"topic change<br/>classifier + rollout %"| N["New domain agent<br/>open task suspended"]:::voice
-    R -->|"unclear"| CL["One clarifying question<br/>handover after 2"]:::voice
-    A & N --> T["Tools through the MCP client<br/>identity token in _meta"]:::mcp
-    T --> RES{"Agent reply"}:::router
-    RES -->|"next question"| OUT["Reply to the caller"]:::north
-    RES -->|"done: resume a suspended task<br/>or ask 'anything else?'"| OUT
-    RES -->|"cannot finish safely"| HO["AGENT_HANDOVER<br/>who · why · what was tried"]:::hand
-    FP & CL --> OUT
-    HO --> Q["Genesys queue or callback<br/>screen-pop"]:::north
-    classDef in fill:#FFFFFF,stroke:#37474F,color:#000
-    classDef north fill:#E3F2FD,stroke:#1E88E5,color:#0D47A1
-    classDef voice fill:#E8F5E9,stroke:#43A047,color:#1B5E20
-    classDef router fill:#FFFDE7,stroke:#F9A825,color:#5D4037
-    classDef mcp fill:#FFF3E0,stroke:#FB8C00,color:#E65100
-    classDef hand fill:#FCE4EC,stroke:#D81B60,color:#880E4F
-```
+![One caller turn: fast path, clarify, same topic, topic change, agent reply, handover](docs/diagrams/turn.svg)
 
 ## How a reservation call is protected
 
-```mermaid
-flowchart TD
-    C["tools/call<br/>from any MCP client"]:::mcp --> ID{"Identity token valid?<br/>(signature · tenant · expiry)"}:::check
-    ID -->|"no token / invalid"| UNK["level = unknown"]:::mcp
-    ID -->|"valid"| LV["level + booking from the token"]:::mcp
-    UNK & LV --> GU{"Guard: tool allowed<br/>at this level?"}:::check
-    GU -->|no| DEN["denied"]:::bad
-    GU -->|yes| SC{"Booking-scoped tool?<br/>booking = token's booking"}:::check
-    SC -->|mismatch| DEN
-    SC -->|ok| KIND{"Shared data<br/>or caller data?"}:::check
-    KIND -->|"flight status, options, caller-ID hint"| FRESH{"Saved copy fresh?"}:::check
-    FRESH -->|yes| HIT["answer · 0 PSS requests"]:::good
-    FRESH -->|"no: single-flight<br/>one loader per key"| LANE
-    KIND -->|"verify, booking, rebook"| LANE{"Breaker closed and<br/>lane token within wait budget?<br/>P0 3s · P1 1.5s · P2 0.5s · P3 0s"}:::check
-    LANE -->|yes| PSS["PSS · hard 5 req/s"]:::south
-    LANE -->|"no: read"| STALE["saved copy labelled 'as of'"]:::warn
-    LANE -->|"no: rebook"| DEF["deferred commit<br/>same idempotency key"]:::warn
-    PSS -->|"timeout on a write"| RB{"Read the booking back"}:::check
-    RB -->|"moved"| HIT
-    RB -->|"unchanged"| FAIL["unavailable · booking unchanged"]:::bad
-    RB -->|"unreadable"| REC["outcome unknown<br/>reconcile under the same key"]:::warn
-    classDef mcp fill:#FFF3E0,stroke:#FB8C00,color:#E65100
-    classDef check fill:#FFFDE7,stroke:#F9A825,color:#5D4037
-    classDef good fill:#E8F5E9,stroke:#43A047,color:#1B5E20
-    classDef warn fill:#FFF8E1,stroke:#FFB300,color:#6D4C41
-    classDef bad fill:#FFEBEE,stroke:#E53935,color:#B71C1C
-    classDef south fill:#FCE4EC,stroke:#D81B60,color:#880E4F
-```
+![How a reservation call is protected inside the MCP server](docs/diagrams/protection.svg)
 
 ## Multi-tenancy: one deployment, one config file
 
-```mermaid
-flowchart LR
-    F[["config/tenants.yml<br/>platform · defaults · tenants"]]:::config
-    F --> M{{"deep-merge defaults<br/>with each tenant block"}}:::config
-    M --> A["atlantica<br/>+448000001234<br/>consent on · rebooking 100%<br/>lanes 40/30/20/10 · deferred on"]:::t1
-    M --> N["nordica<br/>+4780001234<br/>no consent · rebooking 50%<br/>lanes 50/30/10/10 · deferred off"]:::t2
-    A --> VA1["voice agent runtime<br/>atlantica"]:::voice
-    A --> MS1["MCP runtime /atlantica/mcp<br/>own lanes · saved copy · breaker · key"]:::mcp
-    N --> VA2["voice agent runtime<br/>nordica"]:::voice
-    N --> MS2["MCP runtime /nordica/mcp<br/>own lanes · saved copy · breaker · key"]:::mcp
-    classDef config fill:#F3E5F5,stroke:#8E24AA,color:#4A148C
-    classDef t1 fill:#E3F2FD,stroke:#1E88E5,color:#0D47A1
-    classDef t2 fill:#E0F7FA,stroke:#00ACC1,color:#006064
-    classDef voice fill:#E8F5E9,stroke:#43A047,color:#1B5E20
-    classDef mcp fill:#FFF3E0,stroke:#FB8C00,color:#E65100
-```
+![Multi-tenancy: one config file, one runtime per tenant in each process](docs/diagrams/tenancy.svg)
 
 [`config/tenants.yml`](config/tenants.yml) has three blocks:
 
@@ -338,6 +186,9 @@ The flows above are the live, demonstrable counterpart.
 simulated here and what must be built or enabled before going live.
 
 ## Layout
+
+The diagrams above are SVGs generated by `python docs/diagrams/build_diagrams.py` (standard library only),
+with the same toolkit and style as the solution-design figures.
 
 ```
 prototype/
