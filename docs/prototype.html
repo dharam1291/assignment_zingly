@@ -361,14 +361,32 @@ ol.steps li::before{counter-increment:s;content:counter(s);width:26px;height:26p
   <div class="s-head"><span class="s-num">1</span><h2>Quick start</h2><div class="aud"><span class="tag it">IT architect</span><span class="tag ">Reviewer</span></div></div>
   <p class="oneline">One script sets up Python, <b>frees busy ports gracefully</b>, and starts the four servers in dependency order.</p>
 <pre><code>cd prototype
-./start_up.sh                                        # venv + install + start all four servers
-.venv/bin/python scripts/run_flow.py --list          # the 14 demonstration flows
-.venv/bin/python scripts/run_flow.py happy_rebooking --trace
-.venv/bin/python -m genesys_sim --trace              # interactive call in the terminal
-open http://127.0.0.1:8090                           # softphone + agent desktop in a browser
-.venv/bin/python scripts/spike.py                    # load spike: unprotected vs protected
+./start_up.sh --help                          # every command and option
+
+# 1. Start
+./start_up.sh                                 # first run: venv + install + start all four servers
+./start_up.sh restart --clean-traces          # later: fresh servers and an empty trace file
+
+# 2. Run the demonstration flows
+./start_up.sh flows                           # all 14 flows, PASS/FAIL summary
+                                              # same as: .venv/bin/python scripts/run_flow.py --all
+./start_up.sh flows happy_rebooking --trace   # one flow, with the trace of every turn
+
+# 3. Explore
+.venv/bin/python -m genesys_sim --trace       # interactive call in the terminal
+open http://127.0.0.1:8090                    # softphone + agent desktop in a browser
+.venv/bin/python scripts/spike.py             # load spike: unprotected vs protected
+
+# 4. Stop
 ./start_up.sh stop</code></pre>
-  <p class="small muted">Also <code>restart</code>, <code>status</code>, <code>test</code> and <code>logs &lt;name&gt;</code>. If a port is taken, whatever listens on it gets SIGTERM, then SIGKILL after a grace period.</p>
+<div class="tbl"><table><thead><tr><th>Command</th><th>What it does</th></tr></thead><tbody>
+<tr><td>start</td><td>Default. Set up Python if needed and start all servers</td></tr>
+<tr><td>restart</td><td>Stop what this script started, then start again. Add <code>--clean-traces</code> to empty the trace file first</td></tr>
+<tr><td>flows</td><td>Run the demonstration flows: all 14 by default, or names/numbers with <code>--list</code>, <code>--trace</code>, <code>--record</code></td></tr>
+<tr><td>status · stop</td><td>Which servers are running; stop them gracefully (SIGTERM, then SIGKILL)</td></tr>
+<tr><td>test · logs</td><td>Run the automated tests; follow a server log</td></tr>
+</tbody></table></div>
+  <p class="small muted">Needs Python 3.11+ and bash 3.2 or later (macOS works). If a port is taken, whatever listens on it is stopped gracefully first. <code>./start_up.sh --help</code> lists everything.</p>
 <div class="tbl"><table><thead><tr><th>Process</th><th>Port</th><th>Side</th><th>What it is</th></tr></thead><tbody>
 <tr><td>genesys</td><td>8090</td><td>Northbound</td><td>Genesys inbound flow: A/B split, capacity check, queues, callback, screen-pop, browser UI</td></tr>
 <tr><td>voice_agent</td><td>8080</td><td>Zingly</td><td>Gateway, channel, AI router, agents, auth, handover; an MCP client</td></tr>

@@ -1,18 +1,9 @@
 #!/usr/bin/env bash
-# Zingly prototype: one script to set up Python and run every server.
-#
-#   ./start_up.sh               set up (if needed) and start everything
-#   ./start_up.sh stop          stop everything (graceful, then forced)
-#   ./start_up.sh restart       stop + start
-#   ./start_up.sh status        what is running, on which port
-#   ./start_up.sh test          run the automated test suite
-#   ./start_up.sh logs [name]   tail logs (pss | mcp | voice_agent | genesys)
-#
-# Options: --skip-install  --clean-traces  --reinstall
-# Ports (override with env): PSS_PORT=9001 MCP_PORT=8100 VOICE_AGENT_PORT=8080 GENESYS_PORT=8090
+# Zingly prototype: one script to set up Python, run every server and run the demo flows.
+# Run ./start_up.sh --help for every command and option.
 #
 # If a port is already in use, whatever listens on it is stopped gracefully (SIGTERM, then
-# SIGKILL after a grace period) before the new server starts.
+# SIGKILL after a grace period) before the new server starts. Works with bash 3.2+.
 
 set -euo pipefail
 
@@ -201,6 +192,50 @@ status() {
   done
 }
 
+usage() {
+  cat <<EOF
+${c_green}Zingly prototype${c_off} · set up Python, run the four servers, run the demonstration flows
+
+${c_green}Usage${c_off}
+  ./start_up.sh [command] [options]
+
+${c_green}Commands${c_off}
+  start                 Set up Python if needed and start all servers (the default command)
+  restart               Stop everything this script started, then start again
+  stop                  Stop all servers: SIGTERM, then SIGKILL after ${GRACE_SECONDS}s
+  status                Show which servers are running, on which port
+  flows [args]          Run the demonstration flows against the running servers
+                        no args: all 14 flows; or names/numbers, e.g. flows 01 08 --trace
+                        (args go to scripts/run_flow.py: --list --trace --record)
+  test                  Run the automated test suite (pytest)
+  logs [name]           Follow a server log: pss | mcp | voice_agent | genesys (default voice_agent)
+  -h, --help            Show this help
+
+${c_green}Options${c_off} (for start / restart)
+  --clean-traces        Empty .run/traces.jsonl first, so traces show only the new run
+  --skip-install        Do not check or install Python packages (faster restarts)
+  --reinstall           Reinstall every package even if nothing changed
+
+${c_green}Typical sequences${c_off}
+  ./start_up.sh                                   first run: venv, install, start
+  ./start_up.sh restart --clean-traces            fresh servers and an empty trace file
+  ./start_up.sh flows                             all 14 flows, PASS/FAIL summary
+  ./start_up.sh flows 08 --trace                  one flow with the trace of every turn
+  ./start_up.sh flows --list                      list the flows
+  ./start_up.sh status
+  ./start_up.sh stop
+
+${c_green}Other tools${c_off} (servers must be running)
+  .venv/bin/python -m genesys_sim --trace         interactive call in the terminal
+  .venv/bin/python scripts/spike.py               load spike: protection off vs on
+  .venv/bin/python scripts/trace.py --last 3      read recent traces
+  http://127.0.0.1:$GENESYS_PORT                           softphone + agent desktop in a browser
+
+${c_green}Ports${c_off} (override with environment variables)
+  PSS_PORT=$PSS_PORT  MCP_PORT=$MCP_PORT  VOICE_AGENT_PORT=$VOICE_AGENT_PORT  GENESYS_PORT=$GENESYS_PORT
+EOF
+}
+
 banner() {
   cat <<EOF
 
@@ -212,25 +247,29 @@ ${c_green}All services are up.${c_off}
   Traces (JSON lines)                .run/traces.jsonl
 
 Try:
-  .venv/bin/python scripts/run_flow.py --list            # demonstration flows
-  .venv/bin/python scripts/run_flow.py happy_rebooking   # one flow, with its trace
-  .venv/bin/python -m genesys_sim --trace                # interactive call
-  .venv/bin/python scripts/spike.py                      # load spike: unprotected vs protected
-  ./start_up.sh stop
+  ./start_up.sh flows                                     # run all 14 demonstration flows
+  ./start_up.sh flows happy_rebooking --trace             # one flow, with the trace of every turn
+  .venv/bin/python -m genesys_sim --trace                 # interactive call
+  .venv/bin/python scripts/spike.py                       # load spike: unprotected vs protected
+  ./start_up.sh restart --clean-traces                    # fresh start, empty trace file
+  ./start_up.sh --help                                    # every command
 EOF
 }
 
 # ------------------------------------------------------------------ main
-cmd="start"; skip_install=""; clean_traces=""; reinstall=""
+cmd="start"; skip_install=""; clean_traces=""; reinstall=""; log_name=""; flow_args=""
 for arg in "$@"; do
+  if [[ "$cmd" == "flows" ]]; then   # everything after "flows" belongs to run_flow.py
+    case "$arg" in -h|--help) ;; *) flow_args="$flow_args $arg"; continue ;; esac
+  fi
   case "$arg" in
-    start|stop|restart|status|test|logs) cmd="$arg" ;;
+    start|stop|restart|status|test|logs|flows) cmd="$arg" ;;
     --skip-install) skip_install=1 ;;
     --clean-traces) clean_traces=1 ;;
     --reinstall) reinstall=1 ;;
     pss|mcp|voice_agent|genesys) log_name="$arg" ;;
-    -h|--help) sed -n '2,17p' "$0"; exit 0 ;;
-    *) die "unknown argument: $arg (try --help)" ;;
+    -h|--help) usage; exit 0 ;;
+    *) die "unknown argument: $arg (try ./start_up.sh --help)" ;;
   esac
 done
 
@@ -238,6 +277,12 @@ case "$cmd" in
   stop) stop_all ;;
   status) status ;;
   logs) tail -n 50 -f "$RUN/${log_name:-voice_agent}.log" ;;
+  flows)
+    [[ -x "$PY_BIN" ]] || die "Environment not installed; run ./start_up.sh first"
+    # flow_args is a plain word list on purpose (bash 3.2: no arrays under set -u)
+    # shellcheck disable=SC2086
+    if [[ -z "${flow_args// /}" ]]; then "$PY_BIN" scripts/run_flow.py --all
+    else "$PY_BIN" scripts/run_flow.py $flow_args; fi ;;
   test)
     [[ -n "$skip_install" ]] || setup_python
     "$PY_BIN" -m pytest ;;

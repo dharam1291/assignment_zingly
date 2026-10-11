@@ -18,20 +18,46 @@ and slot filling behind the same interfaces an LLM version would use.
 
 ```bash
   cd prototype
-  ./start_up.sh                        # Python venv + install + start all four servers
-  .venv/bin/python scripts/run_flow.py --list
-  .venv/bin/python scripts/run_flow.py happy_rebooking --trace
-  .venv/bin/python -m genesys_sim --trace         # interactive call in the terminal
-  open http://127.0.0.1:8090                      # or the softphone + agent desktop in a browser
-  .venv/bin/python scripts/spike.py              # load spike: unprotected vs protected
+  ./start_up.sh --help                       # every command and option
+
+  # 1. Start
+  ./start_up.sh                              # first run: Python venv + install + start all four servers
+  ./start_up.sh restart --clean-traces       # later: fresh servers and an empty trace file
+
+  # 2. Run the demonstration flows
+  ./start_up.sh flows                        # all 14 flows, PASS/FAIL summary
+                                             # same as: .venv/bin/python scripts/run_flow.py --all
+  ./start_up.sh flows --list                 # list the flows
+  ./start_up.sh flows happy_rebooking --trace   # one flow, with the trace of every turn
+  ./start_up.sh flows 07 08 09               # several flows, by number or name
+
+  # 3. Explore
+  .venv/bin/python -m genesys_sim --trace    # interactive call in the terminal
+  open http://127.0.0.1:8090                 # or the softphone + agent desktop in a browser
+  .venv/bin/python scripts/spike.py          # load spike: unprotected vs protected
+
+  # 4. Stop
+  ./start_up.sh status
   ./start_up.sh stop
 ```
 
-`start_up.sh` needs only Python 3.11+ on the PATH. It creates `.venv`, installs the 13 packages
-in editable mode (only when a `pyproject.toml` changed), and stops whatever already listens on a port
-(SIGTERM, then SIGKILL after a grace period). It then starts the servers in dependency order and
-waits for each one's health check. Other commands are `stop`, `restart`, `status`, `test` and
-`logs <name>`, with the options `--skip-install`, `--clean-traces` and `--reinstall`.
+`start_up.sh` needs only Python 3.11+ on the PATH and works with bash 3.2 (macOS) or later. It
+creates `.venv`, installs the 13 packages in editable mode (only when a `pyproject.toml` changed),
+and stops whatever already listens on a port (SIGTERM, then SIGKILL after a grace period). It then
+starts the servers in dependency order and waits for each one's health check.
+
+| Command | What it does |
+|---|---|
+| `start` (default) | Set up Python if needed and start all servers |
+| `restart` | Stop what this script started, then start again |
+| `stop` | Stop all servers gracefully |
+| `status` | Which servers are running, on which port |
+| `flows [args]` | Run the demonstration flows: no args runs all 14; otherwise names/numbers plus `--list`, `--trace`, `--record` |
+| `test` | Run the automated test suite |
+| `logs [name]` | Follow a server log: `pss`, `mcp`, `voice_agent`, `genesys` |
+
+Options for `start` and `restart`: `--clean-traces` (empty `.run/traces.jsonl` first),
+`--skip-install` (faster restarts) and `--reinstall`.
 
 | Process | Port | Side | What it is |
 |---|---|---|---|
